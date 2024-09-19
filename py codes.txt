@@ -1,0 +1,2646 @@
+File Name: routes.py
+Code: 
+import os
+import csv
+import uuid
+from flask import json, render_template, request, redirect, url_for, flash, jsonify, Response
+from flask_login import login_user, login_required, logout_user, current_user
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
+from sqlalchemy import func
+from models import User, MenuItem, Sale, Customer, Employee, Attendance,db
+from werkzeug.utils import secure_filename
+from datetime import datetime, timezone
+import openpyxl  # To handle Excel files
+from flask_socketio import emit
+
+ALLOWED_EXTENSIONS = {'xls', 'xlsx'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def register_routes(app , socketio):
+
+    @socketio.on('connect')
+    def handle_connect():
+        print('Client connected')
+
+    @socketio.on('disconnect')
+    def handle_disconnect():
+        print('Client disconnected')
+
+
+    # 1. Landing page route ("/")
+    @app.route("/")
+    def landing_page():
+        if current_user.is_authenticated:
+            return redirect(url_for('dashboard'))
+        return render_template('base.html')
+
+    # 2. Login route with JWT tokens
+    @app.route("/login", methods=['GET', 'POST'])
+    def login():
+        if current_user.is_authenticated:
+            return redirect(url_for('dashboard'))
+
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            user = User.query.filter_by(username=username).first()
+
+            if user and user.check_password(password):
+                login_user(user)
+                # Generate JWT tokens
+                access_token = create_access_token(identity=user.id)
+                refresh_token = create_refresh_token(identity=user.id)
+
+                response = redirect(url_for('dashboard'))
+                set_access_cookies(response, access_token)
+                set_refresh_cookies(response, refresh_token)
+                return response
+            else:
+                flash('Invalid username or password.', 'error')
+
+        return render_template('login.html')
+
+    # 3. Dashboard route
+    @app.route("/dashboard")
+    @login_required
+    def dashboard():
+        employees = Employee.query.all() if current_user.role == "admin" else []
+        userName = current_user.username;
+        return render_template("home.html", employees=employees , userName = userName)
+
+    # 4. Register route
+    # Updated Register Route with role restrictions
+    @app.route("/register", methods=['GET', 'POST'])
+    def register():
+        if current_user.is_authenticated:
+            return redirect(url_for('dashboard'))
+
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            role = request.form.get('role')
+
+            # Check if the username already exists
+            if User.query.filter_by(username=username).first():
+                flash('Username already exists.', 'error')
+                return render_template('register.html')
+
+            # Role restrictions logic
+            if role == 'admin':
+                # Check if an admin already exists
+                if User.query.filter_by(role='admin').first():
+                    flash('Only one admin is allowed.', 'error')
+                    return render_template('register.html')
+
+            elif role == 'manager':
+                # Check if there are already two managers
+                manager_count = User.query.filter_by(role='manager').count()
+                if manager_count >= 2:
+                    flash('Only two managers are allowed.', 'error')
+                    return render_template('register.html')
+
+            # Create a new user with the valid role
+            new_user = User(username=username, role=role)
+            new_user.set_password(password)
+            db.session.add(new_user)
+            db.session.commit()
+
+            flash('Registered successfully. Please log in.', 'success')
+            return redirect(url_for('login'))
+
+        return render_template('register.html')
+
+
+    # 5. Logout route with token invalidation
+    @app.route("/logout")
+    @login_required
+    def logout():
+        logout_user()
+        response = redirect(url_for('login'))
+        unset_jwt_cookies(response)  # Unset JWT tokens
+        flash('Logged out successfully.', 'success')
+        return response
+
+    # 6. Menu Management (Upload Excel and CRUD)
+    @app.route("/menu-management", methods=['GET', 'POST'])
+    @login_required
+    def menu_management():
+        if current_user.role != 'admin':
+            return redirect(url_for('dashboard'))
+
+        if request.method == 'POST':
+            file = request.files.get('file')
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                filepath = os.path.join('uploads', filename)
+                file.save(filepath)
+
+                # Read Excel and insert items into the database
+                try:
+                    workbook = openpyxl.load_workbook(filepath)
+                    sheet = workbook.active
+                    for row in sheet.iter_rows(min_row=2, values_only=True):  # Skip the header
+                        name, price, category = row
+                        # Check if the item already exists in the database to prevent duplicates
+                        existing_item = MenuItem.query.filter_by(name=name).first()
+                        if existing_item:
+                            flash(f"Item '{name}' already exists in the database.", 'warning')
+                        else:
+                            new_item = MenuItem(name=name, price=float(price), category=category)
+                            db.session.add(new_item)
+                    db.session.commit()
+                    flash('Menu uploaded and saved successfully!', 'success')
+                except Exception as e:
+                    flash(f"An error occurred while processing the file: {str(e)}", 'error')
+
+                # Delete the file after successful processing
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    flash('Uploaded file deleted successfully.', 'info')
+
+                return redirect(url_for('menu_management'))
+
+        menu_items = MenuItem.query.all()
+        return render_template('menu_management.html', menu_items=menu_items)
+
+    # Route for editing a menu item
+    @app.route("/menu-management/edit/<int:item_id>", methods=['GET', 'POST'])
+    @login_required
+    def edit_menu_item(item_id):
+        if current_user.role != 'admin':
+            return redirect(url_for('dashboard'))
+
+        # Fetch the menu item by its ID
+        menu_item = MenuItem.query.get_or_404(item_id)
+
+        if request.method == 'POST':
+            name = request.form.get('name')
+            price = request.form.get('price')
+            category = request.form.get('category')
+
+            # Update the menu item with new values
+            menu_item.name = name
+            menu_item.price = float(price)
+            menu_item.category = category
+
+            db.session.commit()
+            flash('Menu item updated successfully.', 'success')
+            return redirect(url_for('menu_management'))
+
+        return render_template('edit_menu_item.html', item=menu_item)
+
+    @app.route("/menu-management/delete/<int:item_id>")
+    @login_required
+    def delete_menu_item(item_id):
+        if current_user.role != 'admin':
+            return redirect(url_for('dashboard'))
+
+        item = MenuItem.query.get_or_404(item_id)
+        db.session.delete(item)
+        db.session.commit()
+        flash('Menu item deleted successfully!', 'success')
+        return redirect(url_for('menu_management'))
+
+    @app.route("/create-bill", methods=['GET', 'POST'])
+    @login_required
+    def create_bill():
+        if current_user.role not in ['cashier', 'manager', 'admin']:
+            return redirect(url_for('dashboard'))
+
+        if request.method == 'POST':
+            # Fetch form data
+            customer_id = request.form.get('customer')
+              # Fetch the server name
+            note = request.form.get('note')
+            discount = float(request.form.get('discount', 0))
+
+            # Handle cases when no customer is selected by checking if customer_id exists
+            customer = None
+            if customer_id and customer_id != 'None':
+                customer = Customer.query.get(customer_id)
+
+            # Fetch items from form data (expecting JSON string of items from front-end)
+            items = request.form.get('items')  # Expecting JSON string
+
+            # Parse items as a list of dictionaries (item name, quantity, price)
+            if items:
+                try:
+                    items = json.loads(items)
+                except json.JSONDecodeError:
+                    flash('Error parsing items.', 'error')
+                    return redirect(url_for('create_bill'))
+
+            # Ensure items contain 'price' and 'qty'
+            if not all('price' in item and 'qty' in item for item in items):
+                flash('Error: Items data is incomplete.', 'error')
+                return redirect(url_for('create_bill'))
+
+            # Calculate subtotal, tax, and grand total
+            subtotal = sum(float(item['price']) * int(item['qty']) for item in items)
+            tax = 0.05 * subtotal  # Assuming a 5% tax rate
+            grand_total = subtotal + tax - discount
+
+            # Generate a unique invoice number using uuid4
+            invoice_number = str(uuid.uuid4())
+
+            server = current_user.username
+
+            # Create a new Sale entry
+            new_sale = Sale(
+                invoice_number=invoice_number,
+                items=json.dumps(items),  # Storing the items as JSON in the DB
+                subtotal=subtotal,
+                tax=tax,
+                grand_total=grand_total,
+                discount=discount,
+                notes=note,
+                server=server,  # Store server name
+                customer_id=customer.id if customer else None  # Store customer_id only if customer exists
+            )
+
+            # Add and commit the sale
+            db.session.add(new_sale)
+            db.session.commit()
+
+             # Emit an event to all connected clients
+            socketio.emit('new_bill_created', {'invoice_number': invoice_number}, to='/')
+
+
+            flash('Bill created successfully!', 'success')
+            return redirect(url_for('dashboard'))
+
+        # Load menu items and customers, including checking if there are no customers yet
+        customers = Customer.query.all() if Customer.query.count() > 0 else []
+        menu_items = MenuItem.query.all()  # Ensure MenuItem is loaded
+
+        return render_template('create_bill.html', customers=customers, menu_items=menu_items)
+
+    # Sales Report Route
+    # Register a custom Jinja filter to convert JSON strings into Python objects
+    @app.template_filter('fromjson')
+    def fromjson_filter(s):
+        try:
+            return json.loads(s)
+        except (ValueError, TypeError):
+            return {}
+
+    # Ensure the folder for sales reports exists
+    SALES_REPORT_FOLDER = 'data/salesReport'
+    os.makedirs(SALES_REPORT_FOLDER, exist_ok=True)
+
+
+    # Sales Report Route
+    @app.route("/sales-reports", methods=['GET', 'POST'])
+    @login_required
+    def sales_reports():
+        if current_user.role not in ['admin', 'manager']:
+            return redirect(url_for('dashboard'))
+
+        sales = []
+        report_filepath = None  # Initialize the report filepath
+
+        if request.method == 'POST':
+            start_date_str = request.form.get('start_date')
+            end_date_str = request.form.get('end_date')
+
+            try:
+                # Ensure dates are in the correct format
+                datetime.strptime(start_date_str, '%Y-%m-%d')
+                datetime.strptime(end_date_str, '%Y-%m-%d')
+            except ValueError:
+                flash('Invalid date format.', 'error')
+                return redirect(url_for('sales_reports'))
+
+            # Handle the case when start date and end date are the same
+            if start_date_str == end_date_str:
+                sales = Sale.query.filter(
+                    func.trim(Sale.date) == start_date_str.strip()
+                ).all()
+            else:
+                sales = Sale.query.filter(
+                    func.trim(Sale.date) >= start_date_str.strip(),
+                    func.trim(Sale.date) <= end_date_str.strip()
+                ).all()
+
+            if not sales:
+                flash('No sales found within the selected date range.', 'error')
+                return render_template('sales_reports.html', sales=sales, report_filepath=None)
+
+            # Generate the file name for the report
+            report_filename = f"salesReport_{start_date_str}_{end_date_str}.csv"
+            report_filepath = os.path.join(SALES_REPORT_FOLDER, report_filename)
+
+            # Generate the CSV file and save it to the folder
+            with open(report_filepath, 'w', newline='') as csvfile:
+                csv_writer = csv.writer(csvfile)
+                csv_writer.writerow(['Invoice Number', 'Date', 'Customer', 'Items', 'Subtotal', 'Tax', 'Grand Total', 'Served By', 'Notes'])
+
+                for sale in sales:
+                    customer_name = sale.customer.name if sale.customer else "No Customer"
+                    items = json.loads(sale.items)
+
+                    # Handle missing 'quantity' gracefully
+                    item_list = "; ".join([f"{item['name']} (Qty: {item['qty']})" for item in items])
+
+                    csv_writer.writerow([
+                        sale.invoice_number,
+                        sale.date,
+                        customer_name,
+                        item_list,
+                        sale.subtotal,
+                        sale.tax,
+                        sale.grand_total,
+                        sale.server,
+                        sale.notes
+                    ])
+
+            flash(f"Sales report generated successfully.", "success")
+
+        # Render the form for GET request or after POST
+        return render_template('sales_reports.html', sales=sales, report_filepath=report_filepath)
+
+    # Predefined Sales Report Route for different date ranges
+    @app.route("/sales-reports/predefined/<string:range_type>", methods=['GET'])
+    @login_required
+    def sales_reports_predefined(range_type):
+        if current_user.role not in ['admin', 'manager']:
+            return redirect(url_for('dashboard'))
+
+        today = datetime.now().date()
+        start_date = end_date = None
+
+        if range_type == 'today':
+            start_date = end_date = today
+        elif range_type == 'month':
+            start_date = today.replace(day=1)
+            end_date = today
+        elif range_type == 'year':
+            start_date = today.replace(month=1, day=1)
+            end_date = today
+
+        sales = Sale.query.filter(
+            func.DATE(Sale.date) >= start_date,
+            func.DATE(Sale.date) <= end_date
+        ).all()
+
+        if not sales:
+            flash('No sales found for the selected range.', 'error')
+            return render_template('sales_reports.html', sales=sales)
+
+        # Generate a CSV report for the predefined range
+        report_filename = f"salesReport_{range_type}_{today}.csv"
+        report_filepath = os.path.join(SALES_REPORT_FOLDER, report_filename)
+
+        with open(report_filepath, 'w', newline='') as csvfile:
+            csv_writer = csv.writer(csvfile)
+            csv_writer.writerow(['Invoice Number', 'Date', 'Customer', 'Items', 'Subtotal', 'Tax', 'Grand Total', 'Served By', 'Notes'])
+
+            for sale in sales:
+                customer_name = sale.customer.name if sale.customer else "No Customer"
+                items = json.loads(sale.items)
+
+                # Handle missing 'quantity' gracefully
+                item_list = "; ".join([f"{item['name']} (Qty: {item['qty']})" for item in items])
+
+                csv_writer.writerow([
+                    sale.invoice_number,
+                    sale.date,
+                    customer_name,
+                    item_list,
+                    sale.subtotal,
+                    sale.tax,
+                    sale.grand_total,
+                    sale.server,
+                    sale.notes
+                ])
+
+        return render_template('sales_reports.html', sales=sales, report_filepath=report_filepath)
+
+
+        # Customer Management route
+    @app.route("/customer-management", methods=['GET', 'POST'])
+    @login_required
+    def customer_management():
+        if current_user.role not in ['admin', 'manager']:
+            return redirect(url_for('dashboard'))
+
+        if request.method == 'POST':
+            action = request.form.get('action')
+
+            if action == 'add':
+                # Adding a new customer
+                name = request.form.get('name')
+                phone_number = request.form.get('phone_number')
+                new_customer = Customer(name=name, phone_number=phone_number)
+                db.session.add(new_customer)
+                db.session.commit()
+                flash('Customer added successfully!', 'success')
+            elif action == 'edit':
+                # Editing an existing customer
+                customer_id = request.form.get('customer_id')
+                customer = Customer.query.get(customer_id)
+                customer.name = request.form.get('name')
+                customer.phone_number = request.form.get('phone_number')
+                db.session.commit()
+                flash('Customer updated successfully!', 'success')
+            elif action == 'delete':
+                # Deleting a customer
+                customer_id = request.form.get('customer_id')
+                customer = Customer.query.get(customer_id)
+                db.session.delete(customer)
+                db.session.commit()
+                flash('Customer deleted successfully!', 'success')
+
+        customers = Customer.query.all()
+        return render_template('customer_management.html', customers=customers)
+
+
+    # Route for viewing customer history
+    @app.route("/customer-history", methods=['GET', 'POST'])
+    @login_required
+    def customer_history():
+        if current_user.role not in ['admin', 'manager']:
+            return redirect(url_for('dashboard'))
+
+        customers = Customer.query.all()
+        sales_history = None
+        if request.method == 'POST':
+            customer_id = request.form.get('customer_id')
+            history_type = request.form.get('history_type')
+            
+            customer = Customer.query.get(customer_id)
+            if history_type == 'date_range':
+                start_date = request.form.get('start_date')
+                end_date = request.form.get('end_date')
+                sales_history = Sale.query.filter(Sale.customer_id == customer_id, Sale.date.between(start_date, end_date)).all()
+            else:
+                sales_history = Sale.query.filter_by(customer_id=customer_id).all()
+
+        return render_template('customer_history.html', customers=customers, sales_history=sales_history)
+
+        # User Management route
+    @app.route("/user-management", methods=['GET', 'POST'])
+    @login_required
+    def user_management():
+        if current_user.role != 'admin':
+            return redirect(url_for('dashboard'))
+
+        if request.method == 'POST':
+            action = request.form.get('action')
+            user_id = request.form.get('user_id')
+
+            if action == 'edit':
+                # Editing an existing user
+                user = User.query.get(user_id)
+
+                if not user:
+                    flash('User not found!', 'error')
+                    return redirect(url_for('user_management'))
+
+                # Update role
+                user.role = request.form.get('role')
+
+                # Check if password is provided and update if necessary
+                password = request.form.get('password')
+                if password:
+                    user.set_password(password)  # Set new password if provided
+
+                db.session.commit()
+                flash('User updated successfully!', 'success')
+
+            elif action == 'delete':
+                # Deleting a user
+                user = User.query.get(user_id)
+
+                if not user:
+                    flash('User not found!', 'error')
+                    return redirect(url_for('user_management'))
+
+                db.session.delete(user)
+                db.session.commit()
+                flash('User deleted successfully!', 'success')
+
+        # Fetch all users for display
+        users = User.query.all()
+        return render_template('user_management.html', users=users)
+    
+
+    # 1. Employee Dashboard to display all employees
+    @app.route("/employees", methods=["GET", "POST"])
+    @login_required
+    def employee_dashboard():
+        employees = Employee.query.all()
+
+        # Adding clock-in status to employee object
+        for employee in employees:
+            employee.clocked_in = Attendance.query.filter_by(employee_id=employee.id, clock_out=None).first() is not None
+
+        if request.method == 'POST':
+            # Handle adding new employees
+            name = request.form.get('name')
+            position = request.form.get('position')
+            contact_info = request.form.get('contact_info')
+
+            new_employee = Employee(name=name, position=position, contact_info=contact_info)
+            db.session.add(new_employee)
+            db.session.commit()
+            flash('Employee added successfully!', 'success')
+            return redirect(url_for('employee_dashboard'))
+
+        return render_template('employee_dashboard.html', employees=employees)
+
+    # 2. Add or Edit Employee (Form View)
+    @app.route("/employee/add", methods=["GET", "POST"])
+    @app.route("/employee/edit/<int:employee_id>", methods=["GET", "POST"])
+    @login_required
+    def add_edit_employee(employee_id=None):
+        employee = Employee.query.get(employee_id) if employee_id else None
+
+        if request.method == "POST":
+            name = request.form.get('name')
+            position = request.form.get('position')
+            contact_info = request.form.get('contact_info')
+
+            if employee:
+                # Update existing employee
+                employee.name = name
+                employee.position = position
+                employee.contact_info = contact_info
+                flash('Employee updated successfully!', 'success')
+            else:
+                # Add new employee
+                new_employee = Employee(name=name, position=position, contact_info=contact_info)
+                db.session.add(new_employee)
+                flash('Employee added successfully!', 'success')
+
+            db.session.commit()
+            return redirect(url_for('employee_dashboard'))
+
+        return render_template('add_edit_employee.html', employee=employee)
+
+    # 3. Delete Employee
+    @app.route("/employee/delete/<int:employee_id>", methods=["POST"])
+    @login_required
+    def delete_employee(employee_id):
+        employee = Employee.query.get_or_404(employee_id)
+        db.session.delete(employee)
+        db.session.commit()
+        flash('Employee deleted successfully!', 'success')
+        return redirect(url_for('employee_dashboard'))
+    
+    #For The cashier
+    @app.route("/e", methods=["GET"])
+    @login_required
+    def e():
+        
+        em = Employee.query.all()
+
+        # Adding clock-in status to employee object
+        for employee in em:
+            employee.clocked_in = Attendance.query.filter_by(employee_id=employee.id, clock_out=None).first() is not None
+
+        return render_template('casheirDashboard.html', employees=em)
+
+    # 4. Clock-in route
+    @app.route("/employee/clock-in/<int:employee_id>", methods=["POST"])
+    @login_required
+    def clock_in(employee_id):
+        employee = Employee.query.get_or_404(employee_id)
+        attendance = Attendance(employee_id=employee.id, clock_in=datetime.now(timezone.utc))
+        db.session.add(attendance)
+        db.session.commit()
+
+        # Emit the event to all clients
+        socketio.emit('employee_clocked_in', {'employee_id': employee.id, 'employee_name': employee.name}, to='/')
+
+
+        flash(f'{employee.name} clocked in successfully!', 'success')
+        return redirect(url_for('employee_dashboard'))
+
+    # 5. Clock-out route
+    @app.route("/employee/clock-out/<int:employee_id>", methods=["POST"])
+    @login_required
+    def clock_out(employee_id):
+        attendance = Attendance.query.filter_by(employee_id=employee_id, clock_out=None).first()
+        if attendance:
+            attendance.clock_out = datetime.now(timezone.utc)
+            db.session.commit()
+             # Emit the event to all clients
+            socketio.emit('employee_clocked_out', {'employee_id': employee_id}, to='/')
+
+        else:
+            flash('No clock-in record found for the employee.', 'error')
+        return redirect(url_for('employee_dashboard'))
+
+    # 6. Employee Profile View
+    @app.route("/employee/profile/<int:employee_id>", methods=["GET"])
+    @login_required
+    def employee_profile(employee_id):
+        employee = Employee.query.get_or_404(employee_id)
+        attendance_records = Attendance.query.filter_by(employee_id=employee_id).all()
+        return render_template('employee_profile.html', employee=employee, attendance_records=attendance_records)
+
+    # 7. Attendance Selection Page (select employee to view attendance)
+    @app.route("/attendance/select", methods=["GET", "POST"])
+    @login_required
+    def attendance_selection():
+        employees = Employee.query.all()
+
+        if request.method == "POST":
+            employee_id = request.form.get("employee_id")
+            return redirect(url_for('employee_attendance', employee_id=employee_id))
+
+        return render_template("attendance_selection.html", employees=employees)
+
+    # 8. View Attendance Records (for selected employee)
+    @app.route("/employee/attendance/<int:employee_id>", methods=["GET"])
+    @login_required
+    def employee_attendance(employee_id):
+        employee = Employee.query.get_or_404(employee_id)
+        attendance_records = Attendance.query.filter_by(employee_id=employee_id).all()
+        return render_template('employee_attendance.html', employee=employee, attendance_records=attendance_records)
+
+
+
+
+File Name: models.py
+Code:
+import uuid
+from app_init import db  # Import the same db instance from app_init.py
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
+from datetime import datetime, timezone
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128))
+    role = db.Column(db.String(20), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+# Define the MenuItem model for menu management
+class MenuItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    category = db.Column(db.String(50), nullable=False)
+
+class Sale(db.Model):
+    __tablename__ = 'sales'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    invoice_number = db.Column(db.String(50), nullable=False, unique=True, default=lambda: str(uuid.uuid4()))  # Unique Invoice Number
+    date = db.Column(db.String(50), nullable=False, default=datetime.now().strftime("%Y-%m-%d"))
+    time = db.Column(db.String(50), nullable=False, default=datetime.now().strftime("%H:%M:%S"))
+    items = db.Column(db.Text, nullable=False)  # Store items as JSON (item name, quantity, price)
+    subtotal = db.Column(db.Float, nullable=False)
+    tax = db.Column(db.Float, nullable=False)
+    grand_total = db.Column(db.Float, nullable=False)
+    discount = db.Column(db.Float, nullable=True, default=0.0)
+    notes = db.Column(db.String(255), nullable=True, default='')
+    server = db.Column(db.String(100), nullable=False)  # Added server field
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=True)
+
+    # Relationship with Customer
+    customer = db.relationship('Customer', back_populates='sales')
+
+
+class Customer(db.Model):
+    __tablename__ = 'customer'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    phone_number = db.Column(db.String(20), nullable=True)
+    
+    # Back reference to the Sale model
+    sales = db.relationship('Sale', back_populates='customer')
+
+
+class Employee(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    position = db.Column(db.String(100), nullable=False)
+    contact_info = db.Column(db.String(100), nullable=False)
+
+    # Attendance relationship
+    attendance_records = db.relationship('Attendance', backref='employee', lazy=True)
+
+class Attendance(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    clock_in = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    clock_out = db.Column(db.DateTime, nullable=True)
+
+    @property
+    def worked_hours(self):
+        if self.clock_out:
+            return (self.clock_out - self.clock_in).total_seconds() / 3600  # hours worked
+        return None
+
+File Name: app_init.py
+Code:
+import os
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager
+from flask_jwt_extended import JWTManager
+from flask_socketio import SocketIO
+
+# Initialize database, login manager, and JWT manager
+db = SQLAlchemy()
+login_manager = LoginManager()
+jwt = JWTManager()
+# Add this to your app initialization
+socketio = SocketIO()
+
+def create_initialized_flask_app():
+    app = Flask(__name__, static_folder='static')
+
+    # Set secret keys and database URI
+    app.config['SECRET_KEY'] = 'your-secret-key'
+    database_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'data', 'pos_system.db')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{database_path}'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['JWT_SECRET_KEY'] = 'another-secret-key'
+
+    # Initialize extensions
+    db.init_app(app)
+    login_manager.init_app(app)
+    jwt.init_app(app)
+    # Initialize SocketIO with your app
+    socketio.init_app(app)
+
+    # Load user
+    from models import User
+    @login_manager.user_loader
+    def load_user(user_id):
+        return User.query.get(int(user_id))
+
+    # Create tables if they don't exist
+    with app.app_context():
+        db.create_all()
+
+    return app, socketio
+
+File Name: main.py
+Code: from app_init import create_initialized_flask_app
+from routes import register_routes
+
+app , socketio = create_initialized_flask_app()
+
+register_routes(app ,socketio)
+
+if __name__ == "__main__":
+    socketio.run(app, debug=True, host='0.0.0.0', port=8080)
+
+
+File Name: add_edit_employee.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <h1 class="text-3xl font-bold text-gray-800 mb-6">
+    {{ 'Edit Employee' if employee else 'Add Employee' }}
+  </h1>
+
+  <!-- Add/Edit Employee Form -->
+  <form method="POST" class="space-y-6 bg-white p-6 rounded-lg shadow-lg">
+    <!-- Name Input -->
+    <div>
+      <label for="name" class="block text-lg font-medium text-gray-700 mb-2"
+        >Name:</label
+      >
+      <input
+        type="text"
+        name="name"
+        id="name"
+        value="{{ employee.name if employee else '' }}"
+        required
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        placeholder="Enter employee name"
+      />
+    </div>
+
+    <!-- Position Input -->
+    <div>
+      <label for="position" class="block text-lg font-medium text-gray-700 mb-2"
+        >Position:</label
+      >
+      <input
+        type="text"
+        name="position"
+        id="position"
+        value="{{ employee.position if employee else '' }}"
+        required
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        placeholder="Enter employee position"
+      />
+    </div>
+
+    <!-- Contact Info Input -->
+    <div>
+      <label
+        for="contact_info"
+        class="block text-lg font-medium text-gray-700 mb-2"
+        >Contact Information:</label
+      >
+      <input
+        type="text"
+        name="contact_info"
+        id="contact_info"
+        value="{{ employee.contact_info if employee else '' }}"
+        required
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        placeholder="Enter employee contact information"
+      />
+    </div>
+
+    <!-- Submit Button -->
+    <div class="flex justify-end">
+      <button
+        type="submit"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+      >
+        {{ 'Update' if employee else 'Add' }}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+File Name: attendance_selection.html
+Code: 
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <h1 class="text-3xl font-bold text-gray-800 mb-6">
+    Select Employee to View Attendance
+  </h1>
+
+  <!-- Form for Selecting Employee -->
+  <form
+    method="POST"
+    action="{{ url_for('attendance_selection') }}"
+    class="space-y-6"
+  >
+    <!-- Employee Selection Dropdown -->
+    <div>
+      <label
+        for="employee_id"
+        class="block text-lg font-medium text-gray-700 mb-2"
+        >Select Employee:</label
+      >
+      <select
+        name="employee_id"
+        id="employee_id"
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+      >
+        {% for employee in employees %}
+        <option value="{{ employee.id }}">{{ employee.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Submit Button -->
+    <div class="flex justify-end">
+      <button
+        type="submit"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+      >
+        View Attendance
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+File Name: base.html
+Code:
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title or 'POS System' }}</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/styles.css') }}"
+    />
+  </head>
+  <body class="bg-gray-100">
+    <!-- Responsive Header -->
+    <header class="bg-blue-500 text-white py-4">
+      <div
+        class="container mx-auto flex flex-wrap justify-between items-center px-4"
+      >
+        <h1 class="text-2xl font-bold">POS System</h1>
+        <nav class="w-full md:w-auto">
+          <ul class="flex flex-col md:flex-row md:space-x-4 mt-2 md:mt-0">
+            {% if current_user.is_authenticated %}
+            <li>
+              <a
+                href="{{ url_for('dashboard') }}"
+                class="hover:underline block text-center py-2 md:inline-block"
+                >Dashboard</a
+              >
+            </li>
+            <li>
+              <a
+                href="{{ url_for('logout') }}"
+                class="hover:underline block text-center py-2 md:inline-block"
+                >Logout</a
+              >
+            </li>
+            {% else %}
+            <li>
+              <a
+                href="{{ url_for('login') }}"
+                class="hover:underline block text-center py-2 md:inline-block"
+                >Login</a
+              >
+            </li>
+            <li>
+              <a
+                href="{{ url_for('register') }}"
+                class="hover:underline block text-center py-2 md:inline-block"
+                >Register</a
+              >
+            </li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-content container mx-auto px-4 py-8">
+      {% block content %}{% endblock %}
+    </div>
+
+    <!-- SocketIO functionality (kept the same) -->
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+      var socket = io();
+
+      // Listen for new bill events
+      socket.on("new_bill_created", function (data) {
+        console.log("New bill created: " + data.invoice_number);
+        // Update the UI to reflect the new bill (add logic here)
+      });
+
+      // Listen for employee clock-in/out events
+      socket.on("employee_clocked_in", function (data) {
+        console.log(data.employee_name + " clocked in");
+        // Update the UI to reflect the employee clock-in (add logic here)
+      });
+
+      socket.on("employee_clocked_out", function (data) {
+        console.log("Employee clocked out: " + data.employee_id);
+        // Update the UI to reflect the employee clock-out (add logic here)
+      });
+    </script>
+  </body>
+</html>
+
+File Name: casheirDashboard.html
+Code:
+{% extends "base.html" %} {% block content %}
+
+<div class="overflow-x-auto">
+    <table class="min-w-full bg-white rounded-lg shadow-md">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Name</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Position</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Contact Info</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Attendance</th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for employee in employees %}
+        <tr class="hover:bg-gray-100 transition duration-300">
+          <td class="py-4 px-6 text-sm">{{ employee.name }}</td>
+          <td class="py-4 px-6 text-sm">{{ employee.position }}</td>
+          <td class="py-4 px-6 text-sm">{{ employee.contact_info }}</td>
+          
+          <td class="py-4 px-6 text-sm">
+            <!-- Clock-In and Clock-Out Buttons -->
+            <form
+              action="{{ url_for('clock_in', employee_id=employee.id) }}"
+              method="POST"
+              class="inline-block"
+            >
+              <button
+                type="submit"
+                class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg shadow-md transition duration-300 {{ 'opacity-50 cursor-not-allowed' if employee.clocked_in else '' }}"
+                {{ 'disabled' if employee.clocked_in }}
+              >
+                Clock In
+              </button>
+            </form>
+            <form
+              action="{{ url_for('clock_out', employee_id=employee.id) }}"
+              method="POST"
+              class="inline-block"
+            >
+              <button
+                type="submit"
+                class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg shadow-md transition duration-300 {{ 'opacity-50 cursor-not-allowed' if not employee.clocked_in else '' }}"
+                {{ 'disabled' if not employee.clocked_in }}
+              >
+                Clock Out
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+File Name: create_bill.html
+Code: 
+{% extends "base.html" %} {% block content %}
+<style>
+  @media screen and (max-width: 768px) {
+    #menu-items-container {
+      display: none; /* Hide the menu items container by default */
+    }
+    #menuSearch {
+      width: 100%; /* Make the search bar take up full width on small screens */
+    }
+  }
+
+  @media print {
+    /* Hides the browser's default header and footer (page URL, date, time, etc.) */
+    @page {
+      margin: 0;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+    }
+  }
+</style>
+<div
+  id="customAlert"
+  class="hidden fixed top-0 left-0 right-0 bottom-0 bg-gray-800 bg-opacity-50"
+>
+  <div class="bg-white rounded-lg shadow-lg p-6 max-w-md text-center">
+    <h2 id="alertTitle" class="text-xl font-bold mb-4"></h2>
+    <p id="alertMessage" class="text-gray-700 mb-6"></p>
+    <button
+      onclick="closeAlert()"
+      class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+    >
+      Close
+    </button>
+  </div>
+</div>
+
+<div class="container mx-auto mt-8 flex flex-wrap">
+  <!-- Menu Section (Left side) -->
+  <div class="w-full md:w-1/2 pr-4">
+    <h2 class="text-3xl font-bold mb-6 text-blue-700">Menu</h2>
+    <!-- Search Input Field -->
+    <input
+      type="text"
+      id="menuSearch"
+      placeholder="Search Menu..."
+      class="mb-4 w-full p-2 border rounded-md shadow-md"
+      oninput="filterMenuItems()"
+    />
+    <div
+      id="menu-items-container"
+      class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
+    >
+      {% for item in menu_items %}
+      <button
+        class="menu-item bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"
+        onclick="addItem('{{ item.name }}', '{{ item.price }}')"
+      >
+        {{ item.name }}
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Bill Section (Right side) -->
+  <div class="w-full md:w-1/2 pl-4 mt-8 md:mt-0">
+    <h2 class="text-3xl font-bold mb-6 text-blue-700">Create Invoice</h2>
+
+    <!-- Form Section -->
+    <form method="POST" id="billForm" onsubmit="submitBill(event)">
+      <!-- Note at the top -->
+      <div class="mb-4 mt-6 bg-gray-100 p-4 rounded-lg shadow-md">
+        <label for="note" class="block text-sm font-medium text-gray-700"
+          >Note</label
+        >
+        <textarea
+          name="note"
+          id="note"
+          rows="3"
+          placeholder="Any additional notes..."
+          class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+        ></textarea>
+      </div>
+
+      <!-- Bill Summary -->
+      <h3 class="text-2xl font-semibold mb-4 text-blue-500">Bill Summary</h3>
+      <table
+        class="table-auto w-full border border-gray-200 shadow-lg rounded-md"
+      >
+        <thead class="bg-blue-100 text-blue-700">
+          <tr>
+            <th class="px-4 py-2">Item</th>
+            <th class="px-4 py-2">Qty</th>
+            <th class="px-4 py-2">Price (Unit)</th>
+            <th class="px-4 py-2">Total</th>
+            <th class="px-4 py-2">Action</th>
+          </tr>
+        </thead>
+        <tbody id="bill-items"></tbody>
+      </table>
+
+      <!-- Customer and Server Selection (side by side) -->
+      <div
+        class="flex justify-between mt-6 bg-gray-100 p-4 rounded-lg shadow-md"
+      >
+        <div class="w-1/2 pr-2">
+          <label for="customer" class="block text-sm font-medium text-gray-700"
+            >Customer</label
+          >
+          <select
+            name="customer"
+            id="customer"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+          >
+            <option value="">None</option>
+            {% for customer in customers %}
+            <option value="{{ customer.id }}">{{ customer.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="w-1/2 pl-2">
+          <label class="block text-sm font-medium text-gray-700"
+            >Server Name</label
+          >
+          <p class="mt-1 p-2 bg-gray-100 rounded-md">
+            {{ current_user.username }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Subtotal, Discount, Tax, and Grand Total in one line -->
+      <div class="mt-6 bg-gray-100 p-4 rounded-lg shadow-md">
+        <div class="flex justify-between items-center">
+          <p class="text-lg font-bold text-blue-500">
+            Subtotal: <span id="subtotal">0.00</span>
+          </p>
+          <p class="flex items-center">
+            <span class="text-lg text-gray-700 mr-2">Discount:</span>
+            <input
+              type="number"
+              id="discount"
+              min="0"
+              value="0"
+              class="w-20 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400"
+            />
+          </p>
+          <p class="text-lg text-gray-700 mr-2">Tax:</p>
+          <input
+            type="number"
+            id="tax"
+            value="0"
+            placeholder="0%"
+            class="w-20 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+        <div class="flex justify-between items-center mt-4">
+          <p class="text-lg font-bold text-blue-500">
+            Grand Total: <span id="grand-total">0.00</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Payment Method, Paid Amount, and Change in one line -->
+      <div
+        class="flex justify-between items-center mt-6 bg-gray-100 p-4 rounded-lg shadow-md gap-2"
+      >
+        <div class="w-1/3">
+          <label
+            for="payment-method"
+            class="block text-sm font-medium text-gray-700"
+            >Payment Method</label
+          >
+          <select
+            id="payment-method"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+          >
+            <option value="Cash">Cash</option>
+            <option value="Card">Card</option>
+          </select>
+        </div>
+        <div class="w-1/3">
+          <label
+            for="paid-amount"
+            class="block text-sm font-medium text-gray-700"
+            >Paid Amount</label
+          >
+          <input
+            type="number"
+            id="paid-amount"
+            value="0"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+          />
+        </div>
+        <div class="w-1/3">
+          <label
+            for="change-due"
+            class="block text-sm font-medium text-gray-700"
+            >Change Due</label
+          >
+          <p class="text-lg font-bold text-blue-500" id="change-due">0.00</p>
+        </div>
+      </div>
+
+      <!-- Buttons for Printing, Holding, and Submitting -->
+      <div class="flex justify-around mt-6 mb-10">
+        <button
+          type="submit"
+          class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg"
+        >
+          Submit Bill
+        </button>
+        <button
+          type="button"
+          onclick="printBill()"
+          class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg"
+        >
+          Print
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- JavaScript for adding items to the bill and calculating totals -->
+<script>
+  let billItems = [];
+
+  // Add search functionality for menu items
+  function filterMenuItems() {
+    const searchQuery = document
+      .getElementById("menuSearch")
+      .value.toLowerCase();
+    const menuItems = document.getElementsByClassName("menu-item");
+    const menuContainer = document.getElementById("menu-items-container");
+
+    let visibleCount = 0;
+
+    for (let item of menuItems) {
+      const itemName = item.innerText.toLowerCase();
+      if (itemName.includes(searchQuery)) {
+        item.style.display = "block"; // Show matching item
+        visibleCount++;
+      } else {
+        item.style.display = "none"; // Hide non-matching item
+      }
+    }
+
+    // Only show the menu container if there's a search query and items to show
+    if (searchQuery && visibleCount > 0) {
+      menuContainer.style.display = "grid";
+    } else {
+      menuContainer.style.display = "none";
+    }
+  }
+
+  function showAlert(title, message) {
+    const alertBox = document.getElementById("customAlert");
+    document.getElementById("alertTitle").innerText = title;
+    document.getElementById("alertMessage").innerText = message;
+    alertBox.classList.remove("hidden");
+    alertBox.classList.add("flex", "items-center", "justify-center"); // Dynamically add flex layout
+  }
+
+  function closeAlert() {
+    const alertBox = document.getElementById("customAlert");
+    alertBox.classList.add("hidden");
+    alertBox.classList.remove("flex", "items-center", "justify-center"); // Remove flex when hidden
+  }
+
+  function addItem(name, price) {
+    price = parseFloat(price); // Ensure price is a number
+
+    // Check if item already exists in the bill
+    let existingItem = billItems.find((item) => item.name === name);
+    if (existingItem) {
+      existingItem.qty++;
+    } else {
+      billItems.push({ name, qty: 1, price });
+    }
+    renderBill();
+  }
+
+  function renderBill() {
+    let billTable = document.getElementById("bill-items");
+    let subtotal = 0;
+    billTable.innerHTML = ""; // Clear the table
+
+    billItems.forEach((item) => {
+      let itemTotal = item.qty * item.price;
+      subtotal += itemTotal;
+
+      billTable.innerHTML += `
+          <tr>
+            <td class="border px-4 py-2">${item.name}</td>
+            <td class="border px-4 py-2"><input type="number" value="${
+              item.qty
+            }" onchange="updateQuantity('${
+        item.name
+      }', this.value)" class="w-16 text-center border"></td>
+            <td class="border px-4 py-2">${item.price.toFixed(2)}</td>
+            <td class="border px-4 py-2">${itemTotal.toFixed(2)}</td>
+            <td class="border px-4 py-2"><button onclick="removeItem('${
+              item.name
+            }')">X</button></td>
+          </tr>
+        `;
+    });
+
+    document.getElementById("subtotal").textContent = subtotal.toFixed(2);
+    calculateGrandTotal(subtotal);
+  }
+
+  function updateQuantity(name, qty) {
+    let item = billItems.find((item) => item.name === name);
+    if (item) {
+      item.qty = parseInt(qty);
+    }
+    renderBill();
+  }
+
+  function removeItem(name) {
+    billItems = billItems.filter((item) => item.name !== name);
+    renderBill();
+  }
+
+  function calculateGrandTotal(subtotal) {
+    let discount = parseFloat(document.getElementById("discount").value) || 0;
+    if (discount < 0) discount = 0;
+
+    let tax = parseFloat(document.getElementById("tax").value) || 0;
+    if (tax < 0) tax = 0;
+
+    let discountAmount = discount;
+    let taxAmount = (tax / 100) * subtotal;
+    let grandTotal = subtotal + taxAmount - discountAmount;
+
+    document.getElementById("grand-total").textContent = grandTotal.toFixed(2);
+    calculateChange();
+  }
+
+  document.getElementById("discount").addEventListener("input", function () {
+    calculateGrandTotal(
+      parseFloat(document.getElementById("subtotal").textContent)
+    );
+  });
+
+  document.getElementById("tax").addEventListener("input", function () {
+    calculateGrandTotal(
+      parseFloat(document.getElementById("subtotal").textContent)
+    );
+  });
+
+  function calculateChange() {
+    let grandTotal = parseFloat(
+      document.getElementById("grand-total").textContent
+    );
+    let paidAmount =
+      parseFloat(document.getElementById("paid-amount").value) || 0;
+    let changeDue = paidAmount - grandTotal;
+    document.getElementById("change-due").textContent = changeDue.toFixed(2);
+  }
+
+  document
+    .getElementById("paid-amount")
+    .addEventListener("input", calculateChange);
+
+  function submitBill(event) {
+    event.preventDefault();
+
+    const itemsData = JSON.stringify(billItems);
+    const formData = new FormData(document.getElementById("billForm"));
+    formData.append("items", itemsData);
+
+    fetch("/create-bill", {
+      method: "POST",
+      body: formData,
+    }).then((response) => {
+      if (response.ok) {
+        showAlert("Success", "Order Submitted Successfully!");
+        setTimeout(() => {
+          window.location.href = "/create-bill";
+        }, 2000); // Delay redirect by 2 seconds
+      } else {
+        showAlert("Success", "Failed To Submit Order");
+        setTimeout(() => {
+          window.location.href = "/create-bill";
+        }, 2000);
+      }
+    });
+  }
+
+  function printBill() {
+    const billContent = `
+      <div style="width: 57mm; height: auto; font-family: Arial, sans-serif; font-size: 12px; text-align: center;">
+        <h1 style="font-size: 16px; margin-bottom: 5px;">Podda Restaurant LLC</h1>
+        <p style="margin: 0;">Nuamia 2 Shop 16</p>
+        <p style="margin: 0;">052######</p>
+        <hr style="border: 0.5px dashed #000; margin: 10px 0;">
+
+        <table style="width: 100%; text-align: left; margin-bottom: 10px;">
+          <thead style="border-bottom: 1px dashed #000;">
+            <tr>
+              <th style="padding-bottom: 5px;">Item</th>
+              <th style="padding-bottom: 5px;">Qty</th>
+              <th style="padding-bottom: 5px;">Unit Price</th>
+              <th style="padding-bottom: 5px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${document.getElementById("bill-items").innerHTML}
+          </tbody>
+        </table>
+
+        <div style="text-align: right;">
+          <p style="margin: 2px 0;">Subtotal: ${
+            document.getElementById("subtotal").innerText
+          }</p>
+          <p style="margin: 2px 0;">Tax: ${
+            document.getElementById("tax").value
+          }%</p>
+          <p style="font-weight: bold; margin: 2px 0;">Grand Total: ${
+            document.getElementById("grand-total").innerText
+          }</p>
+        </div>
+
+        <hr style="border: 0.5px dashed #000; margin: 10px 0;">
+        <p style="font-size: 10px; margin-top: 5px;">Thank you for dining with us!</p>
+      </div>`;
+
+    const originalContents = document.body.innerHTML;
+    document.body.innerHTML = billContent;
+    window.print();
+    document.body.innerHTML = originalContents;
+  }
+</script>
+{% endblock %}
+
+
+File Name: customer_history.html
+Code: 
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <!-- Heading -->
+  <h2 class="text-3xl font-bold text-gray-800 mb-6">Customer History</h2>
+
+  <!-- Form to Select Customer and Filters -->
+  <form method="POST" class="space-y-6 bg-white p-6 rounded-lg shadow-lg">
+    <!-- Customer Selection -->
+    <div>
+      <label for="customer" class="block text-lg font-medium text-gray-700 mb-2"
+        >Select Customer</label
+      >
+      <select
+        name="customer_id"
+        id="customer"
+        class="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        required
+      >
+        <option value="" disabled selected>Select Customer</option>
+        {% for customer in customers %}
+        <option value="{{ customer.id }}">{{ customer.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Filter Options -->
+    <div>
+      <label class="block text-lg font-medium text-gray-700 mb-2"
+        >Filter By</label
+      >
+
+      <!-- Date Range Filter -->
+      <div class="flex items-center">
+        <input
+          type="radio"
+          name="history_type"
+          value="date_range"
+          class="mr-2 text-blue-500 focus:ring-blue-500"
+          required
+        />
+        <label for="date_range" class="text-gray-700">Date Range</label>
+      </div>
+      <div class="mt-2 flex space-x-4">
+        <input
+          type="date"
+          name="start_date"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Start Date"
+        />
+        <input
+          type="date"
+          name="end_date"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="End Date"
+        />
+      </div>
+
+      <!-- Full History Filter -->
+      <div class="mt-4 flex items-center">
+        <input
+          type="radio"
+          name="history_type"
+          value="all_history"
+          class="mr-2 text-blue-500 focus:ring-blue-500"
+          required
+        />
+        <label for="all_history" class="text-gray-700">Full History</label>
+      </div>
+    </div>
+
+    <!-- Submit Button -->
+    <div class="flex justify-end">
+      <button
+        type="submit"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+      >
+        View History
+      </button>
+    </div>
+  </form>
+
+  <!-- Display Sales History -->
+  {% if sales_history %}
+  <h3 class="text-2xl font-semibold text-gray-800 mt-8">Sales History</h3>
+  <div class="overflow-x-auto mt-4">
+    <table
+      class="min-w-full bg-white border border-gray-200 rounded-lg shadow-md"
+    >
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Date
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Time
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Items
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Total Amount
+          </th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for sale in sales_history %}
+        <tr class="hover:bg-gray-100 transition duration-300">
+          <td class="px-6 py-4 text-sm">{{ sale.date }}</td>
+          <td class="px-6 py-4 text-sm">{{ sale.time }}</td>
+          <td class="px-6 py-4 text-sm">{{ sale.items }}</td>
+          <td class="px-6 py-4 text-sm">{{ sale.grand_total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+ File Name: customer_management.html
+ Code:
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <!-- Page Title -->
+  <h2 class="text-3xl font-bold text-gray-800 mb-8">Customer Management</h2>
+
+  <!-- Add/Edit Customer Form -->
+  <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+    <h3 class="text-2xl font-semibold text-gray-800 mb-4">Add/Edit Customer</h3>
+    <form method="POST" id="customerForm" class="space-y-6">
+      <input type="hidden" name="action" id="action" value="add" />
+      <input type="hidden" name="customer_id" id="customer_id" />
+
+      <!-- Customer Name -->
+      <div>
+        <label for="name" class="block text-lg font-medium text-gray-700 mb-2"
+          >Customer Name</label
+        >
+        <input
+          type="text"
+          name="name"
+          id="name"
+          class="block w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          required
+        />
+      </div>
+
+      <!-- Phone Number -->
+      <div>
+        <label
+          for="phone_number"
+          class="block text-lg font-medium text-gray-700 mb-2"
+          >Phone Number</label
+        >
+        <input
+          type="text"
+          name="phone_number"
+          id="phone_number"
+          class="block w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          required
+        />
+      </div>
+
+      <!-- Submit Button -->
+      <div class="flex justify-end">
+        <button
+          type="submit"
+          class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+        >
+          Save Customer
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Existing Customers -->
+  <h3 class="text-2xl font-semibold text-gray-800 mb-4">Existing Customers</h3>
+  <div class="overflow-x-auto">
+    <table
+      class="min-w-full bg-white border border-gray-200 rounded-lg shadow-md"
+    >
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            ID
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Name
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Phone Number
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Actions
+          </th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for customer in customers %}
+        <tr class="hover:bg-gray-100 transition duration-300">
+          <td class="px-6 py-4 text-sm">{{ customer.id }}</td>
+          <td class="px-6 py-4 text-sm">{{ customer.name }}</td>
+          <td class="px-6 py-4 text-sm">{{ customer.phone_number }}</td>
+          <td class="px-6 py-4 text-sm">
+            <button
+              onclick="editCustomer('{{ customer.id }}', '{{ customer.name }}', '{{ customer.phone_number }}')"
+              class="bg-yellow-400 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300"
+            >
+              Edit
+            </button>
+            <form method="POST" style="display: inline">
+              <input
+                type="hidden"
+                name="customer_id"
+                value="{{ customer.id }}"
+              />
+              <input type="hidden" name="action" value="delete" />
+              <button
+                type="submit"
+                class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300"
+              >
+                Delete
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- View Customer History Link -->
+  <a
+    href="{{ url_for('customer_history') }}"
+    class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300 mt-8 block text-center"
+  >
+    View Customer History
+  </a>
+</div>
+
+<script>
+  function editCustomer(id, name, phone_number) {
+    document.getElementById("customer_id").value = id;
+    document.getElementById("name").value = name;
+    document.getElementById("phone_number").value = phone_number;
+    document.getElementById("action").value = "edit";
+  }
+</script>
+{% endblock %}
+
+File Name: edit_menu_item.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto mt-8 p-6 bg-white shadow-md rounded-lg">
+  <h2 class="text-2xl font-bold mb-4">Edit Menu Item</h2>
+  <form method="POST" action="{{ url_for('edit_menu_item', item_id=item.id) }}">
+    <div class="mb-4">
+      <label for="name" class="block text-sm font-medium text-gray-700"
+        >Name</label
+      >
+      <input
+        type="text"
+        name="name"
+        id="name"
+        value="{{ item.name }}"
+        required
+        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+      />
+    </div>
+    <div class="mb-4">
+      <label for="price" class="block text-sm font-medium text-gray-700"
+        >Price</label
+      >
+      <input
+        type="number"
+        step="0.01"
+        name="price"
+        id="price"
+        value="{{ item.price }}"
+        required
+        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+      />
+    </div>
+    <div class="mb-4">
+      <label for="category" class="block text-sm font-medium text-gray-700"
+        >Category</label
+      >
+      <input
+        type="text"
+        name="category"
+        id="category"
+        value="{{ item.category }}"
+        required
+        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+      />
+    </div>
+    <div>
+      <button
+        type="submit"
+        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600"
+      >
+        Save Changes
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+File Name: employee_attendance.html
+Code: 
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto mt-8 p-6 bg-white shadow-md rounded-lg">
+  <h1 class="text-2xl font-bold mb-4">Attendance for {{ employee.name }}</h1>
+  <table class="table-auto w-full">
+    <thead>
+      <tr>
+        <th class="px-4 py-2">Clock In</th>
+        <th class="px-4 py-2">Clock Out</th>
+        <th class="px-4 py-2">Hours Worked</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in attendance_records %}
+      <tr>
+        <td class="border px-4 py-2">{{ record.clock_in }}</td>
+        <td class="border px-4 py-2">
+          {{ record.clock_out or 'Still Working' }}
+        </td>
+        <td class="border px-4 py-2">
+          {{ record.worked_hours if record.clock_out else 'N/A' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+File Name:employee_dashboard.html
+Code:
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg">
+  <h1 class="text-3xl font-bold text-gray-800 mb-6">Employee Dashboard</h1>
+
+  <!-- Add New Employee Button -->
+  <div class="mb-4">
+    <a href="{{ url_for('add_edit_employee') }}" 
+      class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-300"
+    >
+      Add New Employee
+    </a>
+  </div>
+
+  <!-- Employee Table -->
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white rounded-lg shadow-md">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Name</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Position</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Contact Info</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Actions</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Attendance</th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for employee in employees %}
+        <tr class="hover:bg-gray-100 transition duration-300">
+          <td class="py-4 px-6 text-sm">{{ employee.name }}</td>
+          <td class="py-4 px-6 text-sm">{{ employee.position }}</td>
+          <td class="py-4 px-6 text-sm">{{ employee.contact_info }}</td>
+          <td class="py-4 px-6 text-sm">
+            <a 
+              href="{{ url_for('add_edit_employee', employee_id=employee.id) }}"
+              class="text-blue-600 hover:text-blue-700 font-bold"
+            >Edit</a>
+            <form
+              action="{{ url_for('delete_employee', employee_id=employee.id) }}"
+              method="POST"
+              class="inline-block"
+            >
+              <button type="submit" class="text-red-500 hover:text-red-700 font-bold ml-4">
+                Delete
+              </button>
+            </form>
+            <a 
+              href="{{ url_for('employee_profile', employee_id=employee.id) }}"
+              class="text-green-600 hover:text-green-700 font-bold ml-4"
+            >Profile</a>
+          </td>
+          <td class="py-4 px-6 text-sm">
+            <!-- Clock-In and Clock-Out Buttons -->
+            <form
+              action="{{ url_for('clock_in', employee_id=employee.id) }}"
+              method="POST"
+              class="inline-block"
+            >
+              <button
+                type="submit"
+                class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg shadow-md transition duration-300 {{ 'opacity-50 cursor-not-allowed' if employee.clocked_in else '' }}"
+                {{ 'disabled' if employee.clocked_in }}
+              >
+                Clock In
+              </button>
+            </form>
+            <form
+              action="{{ url_for('clock_out', employee_id=employee.id) }}"
+              method="POST"
+              class="inline-block"
+            >
+              <button
+                type="submit"
+                class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg shadow-md transition duration-300 {{ 'opacity-50 cursor-not-allowed' if not employee.clocked_in else '' }}"
+                {{ 'disabled' if not employee.clocked_in }}
+              >
+                Clock Out
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+
+File Name: employee_profile.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <!-- Employee Profile Heading -->
+  <h1 class="text-3xl font-bold text-gray-800 mb-6">
+    Employee Profile: {{ employee.name }}
+  </h1>
+
+  <!-- Employee Info Section -->
+  <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+    <p class="text-lg"><strong>Position:</strong> {{ employee.position }}</p>
+    <p class="text-lg">
+      <strong>Contact Info:</strong> {{ employee.contact_info }}
+    </p>
+  </div>
+
+  <!-- Attendance Records Section -->
+  <h2 class="text-2xl font-bold text-gray-800 mb-4">Attendance Records</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white rounded-lg shadow-md">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">
+            Clock In
+          </th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">
+            Clock Out
+          </th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">
+            Hours Worked
+          </th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for record in attendance_records %}
+        <tr class="hover:bg-gray-100 transition duration-300">
+          <td class="py-4 px-6 text-sm">
+            {{ record.clock_in.strftime('%Y-%m-%d %H:%M:%S') }}
+          </td>
+          <td class="py-4 px-6 text-sm">
+            {{ record.clock_out.strftime('%Y-%m-%d %H:%M:%S') if
+            record.clock_out else 'Still Working' }}
+          </td>
+          <td class="py-4 px-6 text-sm">
+            {{ record.worked_hours if record.worked_hours else 'N/A' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+File Name: home.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto mt-8 p-6 bg-gray-100 rounded-lg">
+  <!-- Welcome Message -->
+  <div class="bg-blue-600 text-white p-6 rounded-lg shadow-md mb-8">
+    {% if current_user.role == "admin" %}
+    <h2 class="text-3xl font-bold">Welcome {{userName}}</h2>
+    <p class="mt-2 text-lg">
+      Here's a funny joke to brighten your day: Why did the developer go broke?
+      Because they used up all their cache!
+    </p>
+    {% elif current_user.role == "manager" %}
+    <h2 class="text-3xl font-bold">Welcome {{userName}}</h2>
+    <p class="mt-2 text-lg">
+      Here's a funny joke for you: Why do managers always carry a pen? To make
+      sure they can draw conclusions!
+    </p>
+    {% elif current_user.role == "cashier" %}
+    <h2 class="text-3xl font-bold">Welcome {{userName}}</h2>
+    <p class="mt-2 text-lg">
+      Joke for the day: Why was the cashier always calm? Because they always
+      counted on themselves!
+    </p>
+    {% endif %}
+  </div>
+
+  <!-- Admin/Manager/Cashier Panels -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% if current_user.role == "admin" %}
+    <h2 class="text-2xl font-semibold col-span-full mb-4">Admin Panel</h2>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">User Management</h3>
+      <p class="text-gray-600 mt-2 mb-4">Manage users and their roles.</p>
+      <a
+        href="{{ url_for('user_management') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to User Management</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Customer Management</h3>
+      <p class="text-gray-600 mt-2 mb-4">Handle customer-related tasks.</p>
+      <a
+        href="{{ url_for('customer_management') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Customer Management</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Sales Reports</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and generate sales reports.</p>
+      <a
+        href="{{ url_for('sales_reports') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Sales Reports</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Menu Management</h3>
+      <p class="text-gray-600 mt-2 mb-4">Update and manage menu items.</p>
+      <a
+        href="{{ url_for('menu_management') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Menu Management</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Create Bill</h3>
+      <p class="text-gray-600 mt-2 mb-4">Generate customer bills.</p>
+      <a
+        href="{{ url_for('create_bill') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Create Bill</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Employee Dashboard</h3>
+      <p class="text-gray-600 mt-2 mb-4">Manage employee details.</p>
+      <a
+        href="{{ url_for('employee_dashboard') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Employee Dashboard</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">View Employee Attendance</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and manage attendance records.</p>
+      <a
+        href="{{ url_for('attendance_selection') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Attendance</a
+      >
+    </div>
+
+    {% elif current_user.role == "manager" %}
+    <h2 class="text-2xl font-semibold col-span-full mb-4">Manager Panel</h2>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Sales Reports</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and generate sales reports.</p>
+      <a
+        href="{{ url_for('sales_reports') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Sales Reports</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Create Bill</h3>
+      <p class="text-gray-600 mt-2 mb-4">Generate customer bills.</p>
+      <a
+        href="{{ url_for('create_bill') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Create Bill</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Employee Dashboard</h3>
+      <p class="text-gray-600 mt-2 mb-4">Manage employee details.</p>
+      <a
+        href="{{ url_for('employee_dashboard') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Employee Dashboard</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">View Employee Attendance</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and manage attendance records.</p>
+      <a
+        href="{{ url_for('attendance_selection') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Attendance</a
+      >
+    </div>
+
+    {% elif current_user.role == "cashier" %}
+    <h2 class="text-2xl font-semibold col-span-full mb-4">Cashier Panel</h2>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Create Bill</h3>
+      <p class="text-gray-600 mt-2 mb-4">Generate customer bills.</p>
+      <a
+        href="{{ url_for('create_bill') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Create Bill</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Employee Dashboard</h3>
+      <p class="text-gray-600 mt-2 mb-4">Manage employee details.</p>
+      <a
+        href="{{ url_for('e') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Employee Dashboard</a
+      >
+    </div>
+
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+File Name: login.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="min-h-screen flex items-baseline justify-center bg-gray-100 px-4">
+  <div class="bg-white shadow-lg rounded-lg w-full max-w-md p-8 space-y-6">
+    <h2 class="text-3xl font-bold text-center text-gray-800">
+      Login to Your Account
+    </h2>
+    <form method="POST" action="{{ url_for('login') }}" class="space-y-4">
+      <div>
+        <label for="username" class="block text-sm font-medium text-gray-700"
+          >Username</label
+        >
+        <div class="mt-1">
+          <input
+            type="text"
+            name="username"
+            id="username"
+            required
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Enter your username"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-700"
+          >Password</label
+        >
+        <div class="mt-1">
+          <input
+            type="password"
+            name="password"
+            id="password"
+            required
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Enter your password"
+          />
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+      >
+        Sign in
+      </button>
+    </form>
+
+    <p class="mt-6 text-center text-sm text-gray-600">
+      Don’t have an account?
+      <a
+        href="{{ url_for('register') }}"
+        class="font-medium text-blue-600 hover:text-blue-500"
+        >Register here</a
+      >.
+    </p>
+  </div>
+</div>
+{% endblock %}
+File Name: menu_management.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto mt-8">
+  <h2 class="text-2xl font-bold mb-4">Menu Management</h2>
+
+  <form method="POST" enctype="multipart/form-data">
+    <div class="mb-4">
+      <label for="file" class="block text-sm font-medium"
+        >Upload Excel Menu</label
+      >
+      <input
+        type="file"
+        name="file"
+        id="file"
+        required
+        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+      />
+    </div>
+    <button
+      type="submit"
+      class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+    >
+      Upload
+    </button>
+  </form>
+
+  <h3 class="text-xl font-semibold mt-8 mb-4">Existing Menu</h3>
+  <table class="table-auto w-full">
+    <thead>
+      <tr>
+        <th class="px-4 py-2">Item Name</th>
+        <th class="px-4 py-2">Price</th>
+        <th class="px-4 py-2">Category</th>
+        <th class="px-4 py-2">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in menu_items %}
+      <tr>
+        <td class="border px-4 py-2">{{ item.name }}</td>
+        <td class="border px-4 py-2">{{ item.price }}</td>
+        <td class="border px-4 py-2">{{ item.category }}</td>
+        <td class="border px-4 py-2">
+          <a
+            href="{{ url_for('edit_menu_item', item_id=item.id) }}"
+            class="text-blue-500 hover:underline"
+            >Edit</a
+          >
+          |
+          <a
+            href="{{ url_for('delete_menu_item', item_id=item.id) }}"
+            class="text-red-500 hover:underline"
+            >Delete</a
+          >
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+File Name: register.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="min-h-screen flex items-baseline justify-center bg-gray-100 px-4">
+  <div class="bg-white shadow-lg rounded-lg w-full max-w-md p-8 space-y-6">
+    <h2 class="text-3xl font-bold text-center text-gray-800">
+      Create Your Account
+    </h2>
+    <form method="POST" action="{{ url_for('register') }}" class="space-y-4">
+      <div>
+        <label for="username" class="block text-sm font-medium text-gray-700"
+          >Username</label
+        >
+        <div class="mt-1">
+          <input
+            type="text"
+            name="username"
+            id="username"
+            required
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+            placeholder="Enter your username"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-700"
+          >Password</label
+        >
+        <div class="mt-1">
+          <input
+            type="password"
+            name="password"
+            id="password"
+            required
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+            placeholder="Enter your password"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label for="role" class="block text-sm font-medium text-gray-700"
+          >Select Role</label
+        >
+        <div class="mt-1">
+          <select
+            name="role"
+            id="role"
+            required
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+          >
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+            <option value="cashier">Cashier</option>
+          </select>
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+      >
+        Register
+      </button>
+    </form>
+
+    <p class="mt-6 text-center text-sm text-gray-600">
+      Already have an account?
+      <a
+        href="{{ url_for('login') }}"
+        class="font-medium text-green-600 hover:text-green-500"
+        >Sign in here</a
+      >.
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+File Name:sales_reports.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <!-- Page Title -->
+  <h2 class="text-3xl font-bold text-gray-800 mb-6">Sales Reports</h2>
+
+  <!-- Sales Report Date Range Form -->
+  <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+    <form
+      method="POST"
+      action="{{ url_for('sales_reports') }}"
+      class="space-y-6"
+    >
+      <!-- Start Date -->
+      <div>
+        <label
+          for="start_date"
+          class="block text-lg font-medium text-gray-700 mb-2"
+          >Start Date</label
+        >
+        <input
+          type="date"
+          name="start_date"
+          id="start_date"
+          required
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
+      <!-- End Date -->
+      <div>
+        <label
+          for="end_date"
+          class="block text-lg font-medium text-gray-700 mb-2"
+          >End Date</label
+        >
+        <input
+          type="date"
+          name="end_date"
+          id="end_date"
+          required
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
+      <!-- Submit Button -->
+      <div class="flex justify-end">
+        <button
+          type="submit"
+          class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+        >
+          Generate Sales Report
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Quick Sales Reports Section -->
+  <h3 class="text-2xl font-semibold text-gray-800 mb-4">Quick Sales Reports</h3>
+  <div class="flex space-x-4 mb-8">
+    <button
+      class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+      onclick="generatePredefinedReport('today')"
+    >
+      Today's Sales
+    </button>
+    <button
+      class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+      onclick="generatePredefinedReport('month')"
+    >
+      This Month's Sales
+    </button>
+    <button
+      class="bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+      onclick="generatePredefinedReport('year')"
+    >
+      This Year's Sales
+    </button>
+  </div>
+
+  <!-- Sales Table -->
+  {% if sales %}
+  <div class="overflow-x-auto">
+    <table
+      class="min-w-full bg-white border border-gray-200 rounded-lg shadow-md"
+    >
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Date
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Invoice #
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Items
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Grand Total
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Customer
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Served By
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Notes
+          </th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for sale in sales %}
+        <tr class="hover:bg-gray-100 transition duration-300">
+          <td class="px-6 py-4">{{ sale.date }}</td>
+          <td class="px-6 py-4">{{ sale.invoice_number }}</td>
+          <td class="px-6 py-4">
+            {% set items = sale.items | fromjson %} {% for item in items %} {{
+            item['name'] }} (x{{ item['quantity'] }}), {% endfor %}
+          </td>
+          <td class="px-6 py-4">{{ sale.grand_total }}</td>
+          <td class="px-6 py-4">
+            {{ sale.customer.name if sale.customer else 'No Customer' }}
+          </td>
+          <td class="px-6 py-4">{{ sale.server }}</td>
+          <td class="px-6 py-4">{{ sale.notes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Download Button -->
+  <div class="mt-6">
+    {% if report_filepath %}
+    <a
+      href="{{ url_for('sales_reports') }}?file={{ report_filepath }}"
+      class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+      download
+    >
+      Download Report
+    </a>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="mt-6 text-red-500">No sales found for the selected date range.</p>
+  {% endif %}
+</div>
+
+<script>
+  function generatePredefinedReport(rangeType) {
+    window.location.href = "/sales-reports/predefined/" + rangeType;
+  }
+</script>
+{% endblock %}
+File Name: user_management.html
+Code:
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-50 rounded-lg shadow-md">
+  <!-- User Management Heading -->
+  <h2 class="text-4xl font-bold text-gray-800 mb-8">User Management</h2>
+
+  <!-- Form to Edit Users -->
+  <div class="bg-white p-8 rounded-lg shadow-lg mb-8">
+    <form method="POST" id="edit-form" class="space-y-6">
+      <input type="hidden" name="action" value="edit" />
+      <input type="hidden" name="user_id" id="user_id" />
+
+      <!-- Username Field -->
+      <div>
+        <label
+          for="username"
+          class="block text-lg font-medium text-gray-700 mb-2"
+          >Username</label
+        >
+        <input
+          type="text"
+          name="username"
+          id="username"
+          readonly
+          class="block w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p class="mt-2 text-sm text-gray-500">Username cannot be changed.</p>
+      </div>
+
+      <!-- New Password Field -->
+      <div>
+        <label
+          for="password"
+          class="block text-lg font-medium text-gray-700 mb-2"
+          >New Password</label
+        >
+        <input
+          type="password"
+          name="password"
+          id="password"
+          placeholder="Enter new password"
+          class="block w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <p class="mt-2 text-sm text-gray-500">
+          Leave blank to keep the current password.
+        </p>
+      </div>
+
+      <!-- Role Selection -->
+      <div>
+        <label for="role" class="block text-lg font-medium text-gray-700 mb-2"
+          >Role</label
+        >
+        <select
+          name="role"
+          id="role"
+          class="block w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="admin">Admin</option>
+          <option value="manager">Manager</option>
+          <option value="cashier">Cashier</option>
+        </select>
+      </div>
+
+      <!-- Submit Button -->
+      <div class="flex justify-end">
+        <button
+          type="submit"
+          class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
+        >
+          Update User
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- User Cards List -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+    {% for user in users %}
+    <div
+      class="bg-white p-6 rounded-lg shadow-lg hover:shadow-xl transition duration-300"
+    >
+      <h3 class="text-xl font-bold text-gray-800 mb-2">{{ user.username }}</h3>
+      <p class="text-sm text-gray-600 mb-4">{{ user.role }}</p>
+
+      <div class="flex justify-between items-center">
+        <!-- Edit Button -->
+        <button
+          onclick="editUser('{{ user.id }}', '{{ user.username }}', '{{ user.role }}')"
+          class="bg-yellow-400 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300"
+        >
+          Edit
+        </button>
+
+        <!-- Delete Button -->
+        <form method="POST" style="display: inline">
+          <input type="hidden" name="action" value="delete" />
+          <input type="hidden" name="user_id" value="{{ user.id }}" />
+          <button
+            type="submit"
+            class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300"
+          >
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+  function editUser(id, username, role) {
+    document.getElementById("user_id").value = id;
+    document.getElementById("username").value = username;
+    document.getElementById("role").value = role;
+    document.getElementById("password").value = ""; // Reset password field
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,200 @@
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto mt-8 p-6 bg-gray-100 rounded-lg">
+  <!-- Welcome Message -->
+  <div class="bg-blue-600 text-white p-6 rounded-lg shadow-md mb-8">
+    {% if current_user.role == "admin" %}
+    <h2 class="text-3xl font-bold">Welcome {{userName}}</h2>
+    <p class="mt-2 text-lg">
+      Here's a funny joke to brighten your day: Why did the developer go broke?
+      Because they used up all their cache!
+    </p>
+    {% elif current_user.role == "manager" %}
+    <h2 class="text-3xl font-bold">Welcome {{userName}}</h2>
+    <p class="mt-2 text-lg">
+      Here's a funny joke for you: Why do managers always carry a pen? To make
+      sure they can draw conclusions!
+    </p>
+    {% elif current_user.role == "cashier" %}
+    <h2 class="text-3xl font-bold">Welcome {{userName}}</h2>
+    <p class="mt-2 text-lg">
+      Joke for the day: Why was the cashier always calm? Because they always
+      counted on themselves!
+    </p>
+    {% endif %}
+  </div>
+
+  <!-- Admin/Manager/Cashier Panels -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% if current_user.role == "admin" %}
+    <h2 class="text-2xl font-semibold col-span-full mb-4">Admin Panel</h2>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">User Management</h3>
+      <p class="text-gray-600 mt-2 mb-4">Manage users and their roles.</p>
+      <a
+        href="{{ url_for('user_management') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to User Management</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Customer Management</h3>
+      <p class="text-gray-600 mt-2 mb-4">Handle customer-related tasks.</p>
+      <a
+        href="{{ url_for('customer_management') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Customer Management</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Sales Reports</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and generate sales reports.</p>
+      <a
+        href="{{ url_for('sales_reports') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Sales Reports</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Menu Management</h3>
+      <p class="text-gray-600 mt-2 mb-4">Update and manage menu items.</p>
+      <a
+        href="{{ url_for('menu_management') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Menu Management</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Create Bill</h3>
+      <p class="text-gray-600 mt-2 mb-4">Generate customer bills.</p>
+      <a
+        href="{{ url_for('create_bill') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Create Bill</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Employee Dashboard</h3>
+      <p class="text-gray-600 mt-2 mb-4">Manage employee details.</p>
+      <a
+        href="{{ url_for('employee_dashboard') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Employee Dashboard</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">View Employee Attendance</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and manage attendance records.</p>
+      <a
+        href="{{ url_for('attendance_selection') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Attendance</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">View Serve Menu</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and manage Customer View Menu</p>
+      <a
+        href="{{ url_for('serve_menu_admin') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Serve Menu Dashboard</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">View Menu</h3>
+      <p class="text-gray-600 mt-2 mb-4">View Menu For Customer</p>
+      <a
+        href="{{ url_for('serve_menu') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to View Menu</a
+      >
+    </div>
+
+    {% elif current_user.role == "manager" %}
+    <h2 class="text-2xl font-semibold col-span-full mb-4">Manager Panel</h2>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Sales Reports</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and generate sales reports.</p>
+      <a
+        href="{{ url_for('sales_reports') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Sales Reports</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Create Bill</h3>
+      <p class="text-gray-600 mt-2 mb-4">Generate customer bills.</p>
+      <a
+        href="{{ url_for('create_bill') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Create Bill</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Employee Dashboard</h3>
+      <p class="text-gray-600 mt-2 mb-4">Manage employee details.</p>
+      <a
+        href="{{ url_for('employee_dashboard') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Employee Dashboard</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">View Employee Attendance</h3>
+      <p class="text-gray-600 mt-2 mb-4">View and manage attendance records.</p>
+      <a
+        href="{{ url_for('attendance_selection') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Attendance</a
+      >
+    </div>
+
+    {% elif current_user.role == "cashier" %}
+    <h2 class="text-2xl font-semibold col-span-full mb-4">Cashier Panel</h2>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Create Bill</h3>
+      <p class="text-gray-600 mt-2 mb-4">Generate customer bills.</p>
+      <a
+        href="{{ url_for('create_bill') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Create Bill</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">Employee Dashboard</h3>
+      <p class="text-gray-600 mt-2 mb-4">Manage employee details.</p>
+      <a
+        href="{{ url_for('e') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to Employee Dashboard</a
+      >
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+      <h3 class="text-xl font-bold text-gray-800">View Menu</h3>
+      <p class="text-gray-600 mt-2 mb-4">View Menu For Customer</p>
+      <a
+        href="{{ url_for('serve_menu') }}"
+        class="block w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-center"
+        >Go to View Menu</a
+      >
+    </div>
+
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

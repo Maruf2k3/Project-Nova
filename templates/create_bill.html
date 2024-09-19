@@ -1,0 +1,441 @@
+{% extends "base.html" %} {% block content %}
+<style>
+  @media screen and (max-width: 768px) {
+    #menu-items-container {
+      display: none; /* Hide the menu items container by default */
+    }
+    #menuSearch {
+      width: 100%; /* Make the search bar take up full width on small screens */
+    }
+  }
+
+  @media print {
+    /* Hides the browser's default header and footer (page URL, date, time, etc.) */
+    @page {
+      margin: 0;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+    }
+  }
+</style>
+<div
+  id="customAlert"
+  class="hidden fixed top-0 left-0 right-0 bottom-0 bg-gray-800 bg-opacity-50"
+>
+  <div class="bg-white rounded-lg shadow-lg p-6 max-w-md text-center">
+    <h2 id="alertTitle" class="text-xl font-bold mb-4"></h2>
+    <p id="alertMessage" class="text-gray-700 mb-6"></p>
+    <button
+      onclick="closeAlert()"
+      class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+    >
+      Close
+    </button>
+  </div>
+</div>
+
+<div class="container mx-auto mt-8 flex flex-wrap">
+  <!-- Menu Section (Left side) -->
+  <div class="w-full md:w-1/2 pr-4">
+    <h2 class="text-3xl font-bold mb-6 text-blue-700">Menu</h2>
+    <!-- Search Input Field -->
+    <input
+      type="text"
+      id="menuSearch"
+      placeholder="Search Menu..."
+      class="mb-4 w-full p-2 border rounded-md shadow-md"
+      oninput="filterMenuItems()"
+    />
+    <div
+      id="menu-items-container"
+      class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
+    >
+      {% for item in menu_items %}
+      <button
+        class="menu-item bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"
+        onclick="addItem('{{ item.name }}', '{{ item.price }}')"
+      >
+        {{ item.name }}
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Bill Section (Right side) -->
+  <div class="w-full md:w-1/2 pl-4 mt-8 md:mt-0">
+    <h2 class="text-3xl font-bold mb-6 text-blue-700">Create Invoice</h2>
+
+    <!-- Form Section -->
+    <form method="POST" id="billForm" onsubmit="submitBill(event)">
+      <!-- Note at the top -->
+      <div class="mb-4 mt-6 bg-gray-100 p-4 rounded-lg shadow-md">
+        <label for="note" class="block text-sm font-medium text-gray-700"
+          >Note</label
+        >
+        <textarea
+          name="note"
+          id="note"
+          rows="3"
+          placeholder="Any additional notes..."
+          class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+        ></textarea>
+      </div>
+
+      <!-- Bill Summary -->
+      <h3 class="text-2xl font-semibold mb-4 text-blue-500">Bill Summary</h3>
+      <table
+        class="table-auto w-full border border-gray-200 shadow-lg rounded-md"
+      >
+        <thead class="bg-blue-100 text-blue-700">
+          <tr>
+            <th class="px-4 py-2">Item</th>
+            <th class="px-4 py-2">Qty</th>
+            <th class="px-4 py-2">Price (Unit)</th>
+            <th class="px-4 py-2">Total</th>
+            <th class="px-4 py-2">Action</th>
+          </tr>
+        </thead>
+        <tbody id="bill-items"></tbody>
+      </table>
+
+      <!-- Customer and Server Selection (side by side) -->
+      <div
+        class="flex justify-between mt-6 bg-gray-100 p-4 rounded-lg shadow-md"
+      >
+        <div class="w-1/2 pr-2">
+          <label for="customer" class="block text-sm font-medium text-gray-700"
+            >Customer</label
+          >
+          <select
+            name="customer"
+            id="customer"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+          >
+            <option value="">None</option>
+            {% for customer in customers %}
+            <option value="{{ customer.id }}">{{ customer.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="w-1/2 pl-2">
+          <label class="block text-sm font-medium text-gray-700"
+            >Server Name</label
+          >
+          <p class="mt-1 p-2 bg-gray-100 rounded-md">
+            {{ current_user.username }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Subtotal, Discount, Tax, and Grand Total in one line -->
+      <div class="mt-6 bg-gray-100 p-4 rounded-lg shadow-md">
+        <div class="flex justify-between items-center">
+          <p class="text-lg font-bold text-blue-500">
+            Subtotal: <span id="subtotal">0.00</span>
+          </p>
+          <p class="flex items-center">
+            <span class="text-lg text-gray-700 mr-2">Discount:</span>
+            <input
+              name="discount"
+              type="number"
+              id="discount"
+              min="0"
+              value="0"
+              class="w-20 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400"
+            />
+          </p>
+          <p class="text-lg text-gray-700 mr-2">Tax:</p>
+          <input
+            name="tax"
+            type="number"
+            id="tax"
+            value="0"
+            placeholder="0%"
+            class="w-20 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+        <div class="flex justify-between items-center mt-4">
+          <p class="text-lg font-bold text-blue-500">
+            Grand Total: <span id="grand-total">0.00</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Payment Method, Paid Amount, and Change in one line -->
+      <div
+        class="flex justify-between items-center mt-6 bg-gray-100 p-4 rounded-lg shadow-md gap-2"
+      >
+        <div class="w-1/3">
+          <label
+            for="payment-method"
+            class="block text-sm font-medium text-gray-700"
+            >Payment Method</label
+          >
+          <select
+            name="payment-method"
+            id="payment-method"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+          >
+            <option value="Cash">Cash</option>
+            <option value="Card">Card</option>
+          </select>
+        </div>
+        <div class="w-1/3">
+          <label
+            for="paid-amount"
+            class="block text-sm font-medium text-gray-700"
+            >Paid Amount</label
+          >
+          <input
+            type="number"
+            id="paid-amount"
+            value="0"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+          />
+        </div>
+        <div class="w-1/3">
+          <label
+            for="change-due"
+            class="block text-sm font-medium text-gray-700"
+            >Change Due</label
+          >
+          <p class="text-lg font-bold text-blue-500" id="change-due">0.00</p>
+        </div>
+      </div>
+
+      <!-- Buttons for Printing, Holding, and Submitting -->
+      <div class="flex justify-around mt-6 mb-10">
+        <button
+          type="submit"
+          class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg"
+        >
+          Submit Bill
+        </button>
+        <button
+          type="button"
+          onclick="printBill()"
+          class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg"
+        >
+          Print
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- JavaScript for adding items to the bill and calculating totals -->
+<script>
+  let billItems = [];
+
+  // Add search functionality for menu items
+  function filterMenuItems() {
+    const searchQuery = document
+      .getElementById("menuSearch")
+      .value.toLowerCase();
+    const menuItems = document.getElementsByClassName("menu-item");
+    const menuContainer = document.getElementById("menu-items-container");
+
+    let visibleCount = 0;
+
+    for (let item of menuItems) {
+      const itemName = item.innerText.toLowerCase();
+      if (itemName.includes(searchQuery)) {
+        item.style.display = "block"; // Show matching item
+        visibleCount++;
+      } else {
+        item.style.display = "none"; // Hide non-matching item
+      }
+    }
+
+    // Only show the menu container if there's a search query and items to show
+    if (searchQuery && visibleCount > 0) {
+      menuContainer.style.display = "grid";
+    } else {
+      menuContainer.style.display = "none";
+    }
+  }
+
+  function showAlert(title, message) {
+    const alertBox = document.getElementById("customAlert");
+    document.getElementById("alertTitle").innerText = title;
+    document.getElementById("alertMessage").innerText = message;
+    alertBox.classList.remove("hidden");
+    alertBox.classList.add("flex", "items-center", "justify-center"); // Dynamically add flex layout
+  }
+
+  function closeAlert() {
+    const alertBox = document.getElementById("customAlert");
+    alertBox.classList.add("hidden");
+    alertBox.classList.remove("flex", "items-center", "justify-center"); // Remove flex when hidden
+  }
+
+  function addItem(name, price) {
+    price = parseFloat(price); // Ensure price is a number
+
+    // Check if item already exists in the bill
+    let existingItem = billItems.find((item) => item.name === name);
+    if (existingItem) {
+      existingItem.qty++;
+    } else {
+      billItems.push({ name, qty: 1, price });
+    }
+    renderBill();
+  }
+
+  function renderBill() {
+    let billTable = document.getElementById("bill-items");
+    let subtotal = 0;
+    billTable.innerHTML = ""; // Clear the table
+
+    billItems.forEach((item) => {
+      let itemTotal = item.qty * item.price;
+      subtotal += itemTotal;
+
+      billTable.innerHTML += `
+          <tr>
+            <td class="border px-4 py-2">${item.name}</td>
+            <td class="border px-4 py-2"><input type="number" value="${
+              item.qty
+            }" onchange="updateQuantity('${
+        item.name
+      }', this.value)" class="w-16 text-center border"></td>
+            <td class="border px-4 py-2">${item.price.toFixed(2)}</td>
+            <td class="border px-4 py-2">${itemTotal.toFixed(2)}</td>
+            <td class="border px-4 py-2"><button  onclick="removeItem('${
+              item.name
+            }')">X</button></td>
+          </tr>
+        `;
+    });
+
+    document.getElementById("subtotal").textContent = subtotal.toFixed(2);
+    calculateGrandTotal(subtotal);
+  }
+
+  function updateQuantity(name, qty) {
+    let item = billItems.find((item) => item.name === name);
+    if (item) {
+      item.qty = parseInt(qty);
+    }
+    renderBill();
+  }
+
+  function removeItem(name) {
+    billItems = billItems.filter((item) => item.name !== name);
+    renderBill();
+  }
+
+  function calculateGrandTotal(subtotal) {
+    let discount = parseFloat(document.getElementById("discount").value) || 0;
+    if (discount < 0) discount = 0;
+
+    let tax = parseFloat(document.getElementById("tax").value) || 0;
+    if (tax < 0) tax = 0;
+
+    let discountAmount = discount;
+    let taxAmount = (tax / 100) * subtotal;
+    let grandTotal = subtotal + taxAmount - discountAmount;
+
+    document.getElementById("grand-total").textContent = grandTotal.toFixed(2);
+    calculateChange();
+  }
+
+  document.getElementById("discount").addEventListener("input", function () {
+    calculateGrandTotal(
+      parseFloat(document.getElementById("subtotal").textContent)
+    );
+  });
+
+  document.getElementById("tax").addEventListener("input", function () {
+    calculateGrandTotal(
+      parseFloat(document.getElementById("subtotal").textContent)
+    );
+  });
+
+  function calculateChange() {
+    let grandTotal = parseFloat(
+      document.getElementById("grand-total").textContent
+    );
+    let paidAmount =
+      parseFloat(document.getElementById("paid-amount").value) || 0;
+    let changeDue = paidAmount - grandTotal;
+    document.getElementById("change-due").textContent = changeDue.toFixed(2);
+  }
+
+  document
+    .getElementById("paid-amount")
+    .addEventListener("input", calculateChange);
+
+  function submitBill(event) {
+    event.preventDefault();
+
+    const itemsData = JSON.stringify(billItems);
+    const formData = new FormData(document.getElementById("billForm"));
+    formData.append("items", itemsData);
+
+    fetch("/create-bill", {
+      method: "POST",
+      body: formData,
+    }).then((response) => {
+      if (response.ok) {
+        showAlert("Success", "Order Submitted Successfully!");
+        setTimeout(() => {
+          window.location.href = "/create-bill";
+        }, 2000); // Delay redirect by 2 seconds
+      } else {
+        showAlert("Success", "Failed To Submit Order");
+        setTimeout(() => {
+          window.location.href = "/create-bill";
+        }, 2000);
+      }
+    });
+  }
+
+  function printBill() {
+    const billContent = `
+      <div style="width: 57mm; height: auto; font-family: Arial, sans-serif; font-size: 12px; text-align: center;">
+        <h1 style="font-size: 16px; margin-bottom: 5px;">Podda Restaurant LLC</h1>
+        <p style="margin: 0;">Nuamia 2 Shop 16</p>
+        <p style="margin: 0;">052######</p>
+        <hr style="border: 0.5px dashed #000; margin: 10px 0;">
+
+        <table style="width: 100%; text-align: left; margin-bottom: 10px;">
+          <thead style="border-bottom: 1px dashed #000;">
+            <tr>
+              <th style="padding-bottom: 5px;">Item</th>
+              <th style="padding-bottom: 5px;">Qty</th>
+              <th style="padding-bottom: 5px;">Unit Price</th>
+              <th style="padding-bottom: 5px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${document.getElementById("bill-items").innerHTML}
+          </tbody>
+        </table>
+
+        <div style="text-align: right;">
+          <p style="margin: 2px 0;">Subtotal: ${
+            document.getElementById("subtotal").innerText
+          }</p>
+          <p style="margin: 2px 0;">Tax: ${
+            document.getElementById("tax").value
+          }%</p>
+          <p style="font-weight: bold; margin: 2px 0;">Grand Total: ${
+            document.getElementById("grand-total").innerText
+          }</p>
+        </div>
+
+        <hr style="border: 0.5px dashed #000; margin: 10px 0;">
+        <p style="font-size: 10px; margin-top: 5px;">Thank you for dining with us!</p>
+      </div>`;
+
+    const originalContents = document.body.innerHTML;
+    document.body.innerHTML = billContent;
+    window.print();
+    document.body.innerHTML = originalContents;
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto mt-8 p-6 bg-white shadow-md rounded-lg">
+  <h1 class="text-2xl font-bold mb-4">Attendance for {{ employee.name }}</h1>
+  <table class="table-auto w-full">
+    <thead>
+      <tr>
+        <th class="px-4 py-2">Clock In</th>
+        <th class="px-4 py-2">Clock Out</th>
+        <th class="px-4 py-2">Hours Worked</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in attendance_records %}
+      <tr>
+        <td class="border px-4 py-2">{{ record.clock_in }}</td>
+        <td class="border px-4 py-2">
+          {{ record.clock_out or 'Still Working' }}
+        </td>
+        <td class="border px-4 py-2">
+          {{ record.worked_hours if record.clock_out else 'N/A' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

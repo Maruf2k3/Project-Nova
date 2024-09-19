@@ -1,0 +1,52 @@
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <!-- Employee Profile Heading -->
+  <h1 class="text-3xl font-bold text-gray-800 mb-6">
+    Employee Profile: {{ employee.name }}
+  </h1>
+
+  <!-- Employee Info Section -->
+  <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+    <p class="text-lg"><strong>Position:</strong> {{ employee.position }}</p>
+    <p class="text-lg">
+      <strong>Contact Info:</strong> {{ employee.contact_info }}
+    </p>
+  </div>
+
+  <!-- Attendance Records Section -->
+  <h2 class="text-2xl font-bold text-gray-800 mb-4">Attendance Records</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white rounded-lg shadow-md">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">
+            Clock In
+          </th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">
+            Clock Out
+          </th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">
+            Hours Worked
+          </th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for record in attendance_records %}
+        <tr class="hover:bg-gray-100 transition duration-300">
+          <td class="py-4 px-6 text-sm">
+            {{ record.clock_in.strftime('%Y-%m-%d %H:%M:%S') }}
+          </td>
+          <td class="py-4 px-6 text-sm">
+            {{ record.clock_out.strftime('%Y-%m-%d %H:%M:%S') if
+            record.clock_out else 'Still Working' }}
+          </td>
+          <td class="py-4 px-6 text-sm">
+            {{ record.worked_hours if record.worked_hours else 'N/A' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

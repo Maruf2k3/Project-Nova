@@ -1,0 +1,55 @@
+{% extends "base.html" %} {% block content %}
+
+<div class="overflow-x-auto">
+    <table class="min-w-full bg-white rounded-lg shadow-md">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Name</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Position</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Contact Info</th>
+          <th class="py-3 px-6 text-left text-sm font-medium text-gray-600">Attendance</th>
+        </tr>
+      </thead>
+      <tbody class="text-gray-700">
+        {% for employee in employees %}
+        <tr class="hover:bg-gray-100 transition duration-300">
+          <td class="py-4 px-6 text-sm">{{ employee.name }}</td>
+          <td class="py-4 px-6 text-sm">{{ employee.position }}</td>
+          <td class="py-4 px-6 text-sm">{{ employee.contact_info }}</td>
+          
+          <td class="py-4 px-6 text-sm">
+            <!-- Clock-In and Clock-Out Buttons -->
+            <form
+              action="{{ url_for('clock_in', employee_id=employee.id) }}"
+              method="POST"
+              class="inline-block"
+            >
+              <button
+                type="submit"
+                class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg shadow-md transition duration-300 {{ 'opacity-50 cursor-not-allowed' if employee.clocked_in else '' }}"
+                {{ 'disabled' if employee.clocked_in }}
+              >
+                Clock In
+              </button>
+            </form>
+            <form
+              action="{{ url_for('clock_out', employee_id=employee.id) }}"
+              method="POST"
+              class="inline-block"
+            >
+              <button
+                type="submit"
+                class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg shadow-md transition duration-300 {{ 'opacity-50 cursor-not-allowed' if not employee.clocked_in else '' }}"
+                {{ 'disabled' if not employee.clocked_in }}
+              >
+                Clock Out
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

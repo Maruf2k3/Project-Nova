@@ -1,0 +1,16 @@
+# Ignore Python bytecode and cache
+__pycache__/
+*.py[cod]
+
+# Ignore virtual environment
+venv/
+
+# Ignore node_modules folder
+node_modules/
+
+# Ignore package-lock.json if using npm (optional)
+package-lock.json
+
+# Ignore .env files or secrets (if you use one)
+.env
+
