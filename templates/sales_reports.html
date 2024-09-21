@@ -90,6 +90,9 @@
             Date
           </th>
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Time
+          </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
             Invoice #
           </th>
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
@@ -113,6 +116,7 @@
         {% for sale in sales %}
         <tr class="hover:bg-gray-100 transition duration-300">
           <td class="px-6 py-4">{{ sale.date }}</td>
+          <td class="px-6 py-4">{{ sale.time }}</td>
           <td class="px-6 py-4">{{ sale.invoice_number }}</td>
           <td class="px-6 py-4">
             {% set items = sale.items | fromjson %} {% for item in items %} {{

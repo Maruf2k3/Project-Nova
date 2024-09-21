@@ -20,21 +20,42 @@
       padding: 0;
     }
   }
+
+  /* Toast Notification Styles */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 50;
+    background-color: #1d4ed8; /* Blue accent color for success messages */
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.1);
+    display: none;
+  }
+
+  .toast.show {
+    display: block;
+    animation: slideIn 0.3s ease;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
 </style>
-<div
-  id="customAlert"
-  class="hidden fixed top-0 left-0 right-0 bottom-0 bg-gray-800 bg-opacity-50"
->
-  <div class="bg-white rounded-lg shadow-lg p-6 max-w-md text-center">
-    <h2 id="alertTitle" class="text-xl font-bold mb-4"></h2>
-    <p id="alertMessage" class="text-gray-700 mb-6"></p>
-    <button
-      onclick="closeAlert()"
-      class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-    >
-      Close
-    </button>
-  </div>
+
+<!-- Toast Notification -->
+<div id="customAlert" class="toast">
+  <h2 id="alertTitle" class="text-lg font-bold"></h2>
+  <p id="alertMessage" class="text-sm"></p>
 </div>
 
 <div class="container mx-auto mt-8 flex flex-wrap">
@@ -42,20 +63,36 @@
   <div class="w-full md:w-1/2 pr-4">
     <h2 class="text-3xl font-bold mb-6 text-blue-700">Menu</h2>
     <!-- Search Input Field -->
-    <input
-      type="text"
-      id="menuSearch"
-      placeholder="Search Menu..."
-      class="mb-4 w-full p-2 border rounded-md shadow-md"
-      oninput="filterMenuItems()"
-    />
+    <div class="flex mb-4">
+      <input
+        type="text"
+        id="menuSearch"
+        placeholder="Search Menu..."
+        class="w-full p-2 border rounded-md shadow-md mr-2"
+        oninput="filterMenuItems()"
+      />
+
+      <!-- Category Filter Dropdown -->
+      <select
+        id="categoryFilter"
+        class="p-2 border rounded-md shadow-md"
+        onchange="filterMenuItems()"
+      >
+        <option value="">All Categories</option>
+        {% for item in menu_items|unique(attribute='category') %}
+        <option value="{{ item.category }}">{{ item.category }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- Menu item container -->
     <div
       id="menu-items-container"
-      class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4"
+      class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-5"
     >
       {% for item in menu_items %}
       <button
         class="menu-item bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"
+        data-category="{{ item.category }}"
         onclick="addItem('{{ item.name }}', '{{ item.price }}')"
       >
         {{ item.name }}
@@ -235,14 +272,22 @@
     const searchQuery = document
       .getElementById("menuSearch")
       .value.toLowerCase();
+    const selectedCategory = document.getElementById("categoryFilter").value;
     const menuItems = document.getElementsByClassName("menu-item");
-    const menuContainer = document.getElementById("menu-items-container");
 
     let visibleCount = 0;
 
     for (let item of menuItems) {
       const itemName = item.innerText.toLowerCase();
-      if (itemName.includes(searchQuery)) {
+      const itemCategory = item.getAttribute("data-category");
+
+      // Check if the item matches both the search query and the selected category
+      const matchesSearch = itemName.includes(searchQuery);
+      // Show all items if "All Categories" is selected (""), otherwise filter by category
+      const matchesCategory =
+        selectedCategory === "" || itemCategory === selectedCategory;
+
+      if (matchesSearch && matchesCategory) {
         item.style.display = "block"; // Show matching item
         visibleCount++;
       } else {
@@ -250,28 +295,26 @@
       }
     }
 
-    // Only show the menu container if there's a search query and items to show
-    if (searchQuery && visibleCount > 0) {
+    // Show the menu container if items are visible, otherwise hide it
+    const menuContainer = document.getElementById("menu-items-container");
+    if (visibleCount > 0) {
       menuContainer.style.display = "grid";
     } else {
       menuContainer.style.display = "none";
     }
   }
 
+  // Toast Notification
   function showAlert(title, message) {
     const alertBox = document.getElementById("customAlert");
     document.getElementById("alertTitle").innerText = title;
     document.getElementById("alertMessage").innerText = message;
-    alertBox.classList.remove("hidden");
-    alertBox.classList.add("flex", "items-center", "justify-center"); // Dynamically add flex layout
-  }
+    alertBox.classList.add("show");
 
-  function closeAlert() {
-    const alertBox = document.getElementById("customAlert");
-    alertBox.classList.add("hidden");
-    alertBox.classList.remove("flex", "items-center", "justify-center"); // Remove flex when hidden
+    setTimeout(() => {
+      alertBox.classList.remove("show");
+    }, 3000); // Auto-hide after 3 seconds
   }
-
   function addItem(name, price) {
     price = parseFloat(price); // Ensure price is a number
 
