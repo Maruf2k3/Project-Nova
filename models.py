@@ -28,8 +28,8 @@ class Sale(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     invoice_number = db.Column(db.String(50), nullable=False, unique=True, default=lambda: str(uuid.uuid4()))  # Unique Invoice Number
-    date = db.Column(db.String(50), nullable=False, default=datetime.now().strftime("%Y-%m-%d"))
-    time = db.Column(db.String(50), nullable=False, default=datetime.now().strftime("%H:%M:%S"))
+    date = db.Column(db.String(50), nullable=False)
+    time = db.Column(db.String(50), nullable=False)
     items = db.Column(db.Text, nullable=False)  # Store items as JSON (item name, quantity, price)
     subtotal = db.Column(db.Float, nullable=False)
     tax = db.Column(db.Float, nullable=False)
@@ -67,7 +67,7 @@ class Employee(db.Model):
 class Attendance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
-    clock_in = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    clock_in = db.Column(db.DateTime, nullable=False)
     clock_out = db.Column(db.DateTime, nullable=True)
 
     @property

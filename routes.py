@@ -9,11 +9,16 @@ from sqlalchemy import func
 from models import User, MenuItem,ServeMenu, Sale, Customer, Employee, Attendance,db
 from werkzeug.utils import secure_filename
 from datetime import datetime, timezone
+import pytz
 import openpyxl  # To handle Excel files
 from flask_socketio import emit
 
 
 ALLOWED_EXTENSIONS = {'xls', 'xlsx'}
+
+# Get the current time in the UAE (Asia/Dubai) using pytz
+timezone = pytz.timezone("Asia/Dubai")
+current_time_uae = datetime.now(timezone)
 
 def allowed_file_excel(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -133,7 +138,7 @@ def register_routes(app , socketio):
     @app.route("/menu-management", methods=['GET', 'POST'])
     @login_required
     def menu_management():
-        if current_user.role != 'admin':
+        if current_user.role not in ['admin', 'manager']:
             return redirect(url_for('dashboard'))
 
         if request.method == 'POST':
@@ -175,7 +180,7 @@ def register_routes(app , socketio):
     @app.route("/menu-management/edit/<int:item_id>", methods=['GET', 'POST'])
     @login_required
     def edit_menu_item(item_id):
-        if current_user.role != 'admin':
+        if current_user.role not in ['admin', 'manager']:
             return redirect(url_for('dashboard'))
 
         # Fetch the menu item by its ID
@@ -200,7 +205,7 @@ def register_routes(app , socketio):
     @app.route("/menu-management/delete/<int:item_id>")
     @login_required
     def delete_menu_item(item_id):
-        if current_user.role != 'admin':
+        if current_user.role not in ['admin', 'manager']:
             return redirect(url_for('dashboard'))
 
         item = MenuItem.query.get_or_404(item_id)
@@ -255,9 +260,13 @@ def register_routes(app , socketio):
 
             server = current_user.username
 
+            current_time_uae = datetime.now(pytz.timezone("Asia/Dubai"))
+
             # Create a new Sale entry
             new_sale = Sale(
                 invoice_number=invoice_number,
+                date=current_time_uae.strftime("%Y-%m-%d"),
+                time=current_time_uae.strftime("%H:%M:%S"),
                 items=json.dumps(items),  # Storing the items as JSON in the DB
                 subtotal=subtotal,
                 tax=tax,
@@ -629,7 +638,10 @@ def register_routes(app , socketio):
     @login_required
     def clock_in(employee_id):
         employee = Employee.query.get_or_404(employee_id)
-        attendance = Attendance(employee_id=employee.id, clock_in=datetime.now(timezone.utc))
+
+        clock_in_time = datetime.now(pytz.timezone("Asia/Dubai"))
+        attendance = Attendance(employee_id=employee.id, clock_in=clock_in_time)
+
         db.session.add(attendance)
         db.session.commit()
 
@@ -646,7 +658,8 @@ def register_routes(app , socketio):
     def clock_out(employee_id):
         attendance = Attendance.query.filter_by(employee_id=employee_id, clock_out=None).first()
         if attendance:
-            attendance.clock_out = datetime.now(timezone.utc)
+            clock_out_time = datetime.now(pytz.timezone("Asia/Dubai"))
+            attendance.clock_out = clock_out_time
             db.session.commit()
              # Emit the event to all clients
             socketio.emit('employee_clocked_out', {'employee_id': employee_id}, to='/')
