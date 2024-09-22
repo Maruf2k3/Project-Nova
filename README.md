@@ -37,8 +37,8 @@ This project is a Flask-based Point of Sale (POS) system designed for restaurant
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/your-repo/pos-system.git
-cd pos-system
+git clone git@github.com:Maruf2k3/Project-Nova.git
+cd Project-Nova
 ```
 
 ### Step 2: Create and Activate Virtual Environment
@@ -77,6 +77,8 @@ Open your browser and go to:
 ```bash
 http://localhost:8080
 ```
+
+**Register First as You will need to register the admin or any other role**
 
 Log in as an admin, manager, or cashier to access different parts of the system.
 
