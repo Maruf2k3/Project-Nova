@@ -9,18 +9,6 @@
     }
   }
 
-  @media print {
-    /* Hides the browser's default header and footer (page URL, date, time, etc.) */
-    @page {
-      margin: 0;
-    }
-
-    body {
-      margin: 0;
-      padding: 0;
-    }
-  }
-
   /* Toast Notification Styles */
   .toast {
     position: fixed;
@@ -161,7 +149,7 @@
           <label class="block text-sm font-medium text-gray-700"
             >Server Name</label
           >
-          <p class="mt-1 p-2 bg-gray-100 rounded-md">
+          <p id="server" class="mt-1 p-2 bg-gray-100 rounded-md">
             {{ current_user.username }}
           </p>
         </div>
@@ -438,47 +426,91 @@
   }
 
   function printBill() {
+    const serverName = document.getElementById("server").textContent.trim(); // Now this will work
+    const paidAmount = document.getElementById("paid-amount").value;
+    const taxInValue = parseInt(document.getElementById("tax").value);
+
     const billContent = `
-      <div style="width: 57mm; height: auto; font-family: Arial, sans-serif; font-size: 12px; text-align: center;">
-        <h1 style="font-size: 16px; margin-bottom: 5px;">Podda Restaurant LLC</h1>
-        <p style="margin: 0;">Nuamia 2 Shop 16</p>
-        <p style="margin: 0;">052######</p>
-        <hr style="border: 0.5px dashed #000; margin: 10px 0;">
+  <div style="width: 80mm; font-family: Arial, sans-serif; font-size: 12px; text-align: center; padding: 10mm;">
+    <h1 style="font-size: 16px; margin-bottom: 5px;">Podda Restaurant LLC</h1>
+    <p style="margin: 0;">Nuamia 2 Shop 16</p>
+    <p style="margin: 0;">052######</p>
+    <hr style="border: 0.5px dashed #000; margin: 10px 0;">
 
-        <table style="width: 100%; text-align: left; margin-bottom: 10px;">
-          <thead style="border-bottom: 1px dashed #000;">
-            <tr>
-              <th style="padding-bottom: 5px;">Item</th>
-              <th style="padding-bottom: 5px;">Qty</th>
-              <th style="padding-bottom: 5px;">Unit Price</th>
-              <th style="padding-bottom: 5px;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${document.getElementById("bill-items").innerHTML}
-          </tbody>
-        </table>
+    <p style="margin: 0; text-align: left;">
+      <strong>Date:</strong> ${new Date().toLocaleString()}
+    </p>
+    <p style="margin: 0; text-align: left;">
+      <strong>Customer:</strong> ${
+        document.getElementById("customer").selectedOptions[0].text
+      }
+    </p>
+    <p style="margin: 0; text-align: left;">
+      <strong>Server:</strong> ${serverName}
+    </p>
 
-        <div style="text-align: right;">
-          <p style="margin: 2px 0;">Subtotal: ${
-            document.getElementById("subtotal").innerText
-          }</p>
-          <p style="margin: 2px 0;">Tax: ${
-            document.getElementById("tax").value
-          }%</p>
-          <p style="font-weight: bold; margin: 2px 0;">Grand Total: ${
-            document.getElementById("grand-total").innerText
-          }</p>
-        </div>
+    <hr style="border: 0.5px dashed #000; margin: 10px 0;">
 
-        <hr style="border: 0.5px dashed #000; margin: 10px 0;">
-        <p style="font-size: 10px; margin-top: 5px;">Thank you for dining with us!</p>
-      </div>`;
+    <table style="width: 100%; text-align: left; margin-bottom: 10px; border-collapse: collapse;">
+      <thead style="border-bottom: 1px dashed #000;">
+        <tr>
+          <th style="border: 1px solid #000; padding: 5px; text-align: left;">Item</th>
+          <th style="border: 1px solid #000; padding: 5px; text-align: right;">Qty</th>
+          <th style="border: 1px solid #000; padding: 5px; text-align: right;">Price</th>
+          <th style="border: 1px solid #000; padding: 5px; text-align: right;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${generateBillItemsHTML()}
+      </tbody>
+    </table>
+    
+    <div style="text-align: right;">
+      <p style="margin: 2px 0;"><strong>Subtotal:</strong> ${parseInt(
+        document.getElementById("subtotal").innerText
+      )} AED</p>
+      <p style="margin: 2px 0;"><strong>Tax:</strong> ${
+        (taxInValue / 100) *
+        parseInt(document.getElementById("subtotal").innerText)
+      } AED</p>
+      <p style="margin: 2px 0;"><strong>Discount:</strong> ${parseInt(
+        document.getElementById("discount").value
+      )} AED</p>
+      <p style="margin: 2px 0;"><strong>Paid:</strong> ${paidAmount}</p>
+      <p style="font-weight: bold; margin: 2px 0;"><strong>Grand Total:</strong> ${parseInt(
+        document.getElementById("grand-total").innerText
+      )} AED</p>
+    </div>
+
+    <hr style="border: 0.5px dashed #000; margin: 10px 0;">
+    <p style="font-size: 10px; margin-top: 5px;">Thank you for dining with us!</p>
+  </div>`;
 
     const originalContents = document.body.innerHTML;
     document.body.innerHTML = billContent;
     window.print();
     document.body.innerHTML = originalContents;
+  }
+
+  function generateBillItemsHTML() {
+    let itemsHTML = "";
+    billItems.forEach((item) => {
+      const itemTotal = parseInt(item.qty * item.price);
+      itemsHTML += `
+    <tr>
+      <td style="border: 1px solid #000; padding: 5px; text-align: left;">${
+        item.name
+      }</td>
+      <td style="border: 1px solid #000; padding: 5px; text-align: right;">${parseInt(
+        item.qty
+      )}</td>
+      <td style="border: 1px solid #000; padding: 5px; text-align: right;">${parseInt(
+        item.price
+      )}</td>
+      <td style="border: 1px solid #000; padding: 5px; text-align: right;">${itemTotal}</td>
+    </tr>`;
+    });
+    return itemsHTML;
   }
 </script>
 {% endblock %}

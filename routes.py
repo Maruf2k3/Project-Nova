@@ -2,17 +2,16 @@ import io
 import os
 import csv
 import uuid
-from flask import json, render_template, request, redirect, url_for, flash, jsonify, Response, current_app
+from flask import json, make_response, render_template, request, redirect, url_for, flash, jsonify, Response, current_app
 from flask_login import login_user, login_required, logout_user, current_user
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
 from sqlalchemy import func
 from models import User, MenuItem,ServeMenu, Sale, Customer, Employee, Attendance,db
 from werkzeug.utils import secure_filename
-from datetime import datetime, timezone
+from datetime import datetime
 import pytz
 import openpyxl  # To handle Excel files
 from flask_socketio import emit
-
 
 ALLOWED_EXTENSIONS = {'xls', 'xlsx' , 'png', 'jpg', 'jpeg'}
 
@@ -774,4 +773,26 @@ def register_routes(app , socketio):
         menu_items = ServeMenu.query.all()
         return render_template('serveMenuAdminPage.html', menu_items=menu_items)
 
+    @app.route("/get-sale/<int:sale_id>", methods=['GET'])
+    @login_required
+    def get_sale(sale_id):
+        sale = Sale.query.get_or_404(sale_id)
+        items = json.loads(sale.items)
 
+        # Prepare sale data as JSON
+        sale_data = {
+            "invoice_number": sale.invoice_number,
+            "date": sale.date,
+            "time": sale.time,
+            "items": items,
+            "subtotal": sale.subtotal,
+            "tax": sale.tax,
+            "discount": sale.discount,
+            "grand_total": sale.grand_total,
+            "server": sale.server,
+            "payment_method": sale.payment_method,
+            "notes": sale.notes,
+            "customer": sale.customer.name if sale.customer else 'No Customer'
+        }
+
+        return jsonify(sale_data)

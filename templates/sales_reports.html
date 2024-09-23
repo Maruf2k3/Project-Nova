@@ -110,6 +110,9 @@
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
             Notes
           </th>
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
+            Action
+          </th>
         </tr>
       </thead>
       <tbody class="text-gray-700">
@@ -128,6 +131,14 @@
           </td>
           <td class="px-6 py-4">{{ sale.server }}</td>
           <td class="px-6 py-4">{{ sale.notes }}</td>
+          <td class="px-6 py-4">
+            <button
+              onclick="generateBillPDF('{{ sale.id }}')"
+              class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
+            >
+              Generate Bill PDF
+            </button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -151,6 +162,113 @@
 <script>
   function generatePredefinedReport(rangeType) {
     window.location.href = "/sales-reports/predefined/" + rangeType;
+  }
+
+  async function generateBillPDF(saleId) {
+    // Fetch the sale data from the Flask route
+    const response = await fetch(`/get-sale/${saleId}`);
+    const sale = await response.json();
+
+    // Initialize jsPDF with the 80mm paper size (3.15 inches width, height auto)
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      unit: "mm", // Set to millimeters for thermal paper size
+      format: [80, 297], // Width: 80mm, Height: 297mm (A4 default, adjusts dynamically)
+    });
+
+    // Set styles
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const textCenterX = pageWidth / 2;
+    let y = 10; // Initial y-axis position
+
+    // Header
+    doc.setFontSize(16);
+    doc.setTextColor(40, 40, 40); // Dark gray
+    doc.setFont("helvetica", "bold");
+    doc.text("Podda Restaurant LLC", textCenterX, y, { align: "center" });
+
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Date: ${sale.date} ${sale.time}`, textCenterX, y, {
+      align: "center",
+    });
+
+    // Customer and Server info
+    y += 10;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Customer: ${sale.customer}`, 10, y);
+    y += 5;
+    doc.text(`Server: ${sale.server}`, 10, y);
+
+    // Table Headers (with better alignment)
+    y += 10;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Item", 10, y);
+    doc.text("Qty", 40, y, { align: "right" });
+    doc.text("Price", 55, y, { align: "right" });
+    doc.text("Total", 70, y, { align: "right" });
+
+    // Table Body
+    y += 5;
+    doc.setFont("helvetica", "normal");
+    sale.items.forEach((item) => {
+      // Split long item names into multiple lines
+      const itemNameLines = doc.splitTextToSize(item.name, 30); // Adjusted width for the item column
+
+      // Print the item name (multi-line if necessary)
+      doc.text(itemNameLines, 10, y);
+
+      // Align Qty, Price, and Total to the right, even with multiple lines of item names
+      doc.text(item.qty.toString(), 40, y, { align: "right" });
+      doc.text(item.price.toFixed(2), 55, y, { align: "right" });
+      doc.text((item.qty * item.price).toFixed(2), 70, y, { align: "right" });
+
+      // Adjust y to move down by the height of the item name (if it wraps onto multiple lines)
+      y += itemNameLines.length * 5; // Each line of text is 5mm high
+    });
+
+    // Totals Section
+    y += 10;
+    doc.setFont("helvetica", "bold");
+    doc.setDrawColor(0, 0, 0); // Black line for separation
+    doc.line(10, y, 70, y); // Draw line to separate items and totals
+    y += 5;
+
+    // Subtotal
+    doc.text(`Subtotal:`, 10, y);
+    doc.text(sale.subtotal.toFixed(2), 70, y, { align: "right" });
+
+    // Tax
+    y += 5;
+    doc.text(`Tax:`, 10, y);
+    doc.text(sale.tax.toFixed(2), 70, y, { align: "right" });
+
+    // Discount
+    y += 5;
+    doc.text(`Discount:`, 10, y);
+    doc.text(sale.discount.toFixed(2), 70, y, { align: "right" });
+
+    // Grand Total
+    y += 5;
+    doc.setFontSize(14);
+    doc.setTextColor(255, 0, 0); // Red for emphasis
+    doc.text(`Grand Total:`, 10, y);
+    doc.text(sale.grand_total.toFixed(2), 70, y, { align: "right" });
+
+    // Footer
+    y += 10;
+    doc.setTextColor(40, 40, 40); // Dark gray
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Thank you for dining with us!", textCenterX, y, {
+      align: "center",
+    });
+
+    // Download the PDF
+    doc.save(`bill_${sale.invoice_number}.pdf`);
   }
 </script>
 {% endblock %}
