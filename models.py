@@ -73,8 +73,15 @@ class Attendance(db.Model):
     @property
     def worked_hours(self):
         if self.clock_out:
-            return (self.clock_out - self.clock_in).total_seconds() / 3600  # hours worked
+            worked_time = self.clock_out - self.clock_in
+            total_minutes = int(worked_time.total_seconds() / 60)
+            hours, minutes = divmod(total_minutes, 60)
+            if hours > 0:
+                return f"{hours} hour(s), {minutes} minute(s)"
+            else:
+                return f"{minutes} minute(s)"
         return None
+
 
 class ServeMenu(db.Model):
     __tablename__ = 'serve_menu'
