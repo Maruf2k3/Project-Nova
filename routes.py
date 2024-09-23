@@ -14,20 +14,10 @@ import openpyxl  # To handle Excel files
 from flask_socketio import emit
 
 
-ALLOWED_EXTENSIONS = {'xls', 'xlsx'}
-
-# Get the current time in the UAE (Asia/Dubai) using pytz
-timezone = pytz.timezone("Asia/Dubai")
-current_time_uae = datetime.now(timezone)
-
-def allowed_file_excel(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+ALLOWED_EXTENSIONS = {'xls', 'xlsx' , 'png', 'jpg', 'jpeg'}
 
 def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
-
-
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def register_routes(app , socketio):
 
@@ -143,7 +133,7 @@ def register_routes(app , socketio):
 
         if request.method == 'POST':
             file = request.files.get('file')
-            if file and allowed_file_excel(file.filename):
+            if file and allowed_file(file.filename):
                 filename = secure_filename(file.filename)
                 filepath = os.path.join('uploads', filename)
                 file.save(filepath)

@@ -25,7 +25,6 @@ def create_initialized_flask_app():
     # Configuration for file uploads
     app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-    app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
     # Ensure the upload directory exists
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
