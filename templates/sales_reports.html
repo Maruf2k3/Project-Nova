@@ -92,9 +92,7 @@
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
             Time
           </th>
-          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
-            Invoice #
-          </th>
+
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
             Items
           </th>
@@ -111,7 +109,7 @@
             Notes
           </th>
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
-            Action
+            Donwlaod Bill
           </th>
         </tr>
       </thead>
@@ -120,7 +118,6 @@
         <tr class="hover:bg-gray-100 transition duration-300">
           <td class="px-6 py-4">{{ sale.date }}</td>
           <td class="px-6 py-4">{{ sale.time }}</td>
-          <td class="px-6 py-4">{{ sale.invoice_number }}</td>
           <td class="px-6 py-4">
             {% set items = sale.items | fromjson %} {% for item in items %} {{
             item['name'] }} (Qty: {{ item.get('qty', 1) }}), {% endfor %}
@@ -136,7 +133,7 @@
               onclick="generateBillPDF('{{ sale.id }}')"
               class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
             >
-              Generate Bill PDF
+              <i class="fa-solid fa-download"></i>
             </button>
           </td>
         </tr>
@@ -155,7 +152,9 @@
     </a>
   </div>
   {% else %}
-  <p class="mt-6 text-red-500">No sales found for the selected date range.</p>
+  <p class="mt-6 p-6 bg-zinc-800 rounded-lg text-red-500 font-bold">
+    No sales found for the selected date range.
+  </p>
   {% endif %}
 </div>
 

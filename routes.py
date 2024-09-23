@@ -2,7 +2,7 @@ import io
 import os
 import csv
 import uuid
-from flask import json, make_response, render_template, request, redirect, url_for, flash, jsonify, Response, current_app
+from flask import json, render_template, request, redirect, url_for, flash, jsonify, Response, current_app
 from flask_login import login_user, login_required, logout_user, current_user
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
 from sqlalchemy import func
