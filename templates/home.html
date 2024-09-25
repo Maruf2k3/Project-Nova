@@ -48,25 +48,32 @@ description, url, icon) %}
     {{ render_card("User Management", "Manage users and their roles.",
     "user_management", "fa-users-cog") }} {{ render_card("Customer Management",
     "Handle customer-related tasks.", "customer_management", "fa-address-book")
-    }} {{ render_card("Sales Reports", "View and generate sales reports.",
-    "sales_reports", "fa-chart-line") }} {{ render_card("Menu Management",
-    "Update and manage menu items.", "menu_management", "fa-utensils") }} {{
-    render_card("Create Bill", "Generate customer bills.", "create_bill",
-    "fa-receipt") }} {{ render_card("Employee Dashboard", "Manage employee
-    details.", "employee_dashboard", "fa-briefcase") }} {{ render_card("Employee
-    Attendance", "View and manage attendance records.", "attendance_selection",
-    "fa-calendar-check") }} {{ render_card("Serve Menu Dashboard", "Manage
-    Customer View Menu.", "serve_menu_admin", "fa-concierge-bell") }} {{
-    render_card("View Menu", "View Menu For Customer", "serve_menu",
-    "fa-list-alt") }} {% elif current_user.role == "manager" %}
-    <h2 class="text-2xl font-semibold col-span-full mb-4">Manager Panel</h2>
-    {{ render_card("Sales Reports", "View and generate sales reports.",
-    "sales_reports", "fa-chart-line") }} {{ render_card("Create Bill", "Generate
+    }} {{ render_card("Group Management", "Manage groups settle payments and see
+    payment history.", "group_management", "fa-users") }} {{ render_card("Sales
+    Reports", "View and generate sales reports.", "sales_reports",
+    "fa-chart-line") }} {{ render_card("Groups Reports", "View and generate
+    Groups reports.", "group_sales_reports", "fa-chart-line") }} {{
+    render_card("Menu Management", "Update and manage menu items.",
+    "menu_management", "fa-utensils") }} {{ render_card("Create Bill", "Generate
     customer bills.", "create_bill", "fa-receipt") }} {{ render_card("Employee
     Dashboard", "Manage employee details.", "employee_dashboard",
     "fa-briefcase") }} {{ render_card("Employee Attendance", "View and manage
-    attendance records.", "attendance_selection", "fa-calendar-check") }} {%
-    elif current_user.role == "cashier" %}
+    attendance records.", "attendance_selection", "fa-calendar-check") }} {{
+    render_card("Serve Menu Dashboard", "Manage Customer View Menu.",
+    "serve_menu_admin", "fa-concierge-bell") }} {{ render_card("View Menu",
+    "View Menu For Customer", "serve_menu", "fa-list-alt") }} {% elif
+    current_user.role == "manager" %}
+    <h2 class="text-2xl font-semibold col-span-full mb-4">Manager Panel</h2>
+    {{ render_card("Sales Reports", "View and generate sales
+    reports.","sales_reports", "fa-chart-line") }} {{ render_card("Groups
+    Reports", "View and generate Groups reports.", "group_sales_reports",
+    "fa-chart-line") }} {{ render_card("Create Bill", "Generate customer
+    bills.", "create_bill", "fa-receipt") }} {{ render_card("Group Management",
+    "Manage groups and settle payments.", "group_management", "fa-users") }} {{
+    render_card("Employee Dashboard", "Manage employee details.",
+    "employee_dashboard", "fa-briefcase") }} {{ render_card("Employee
+    Attendance", "View and manage attendance records.", "attendance_selection",
+    "fa-calendar-check") }} {% elif current_user.role == "cashier" %}
     <h2 class="text-2xl font-semibold col-span-full mb-4">Cashier Panel</h2>
     {{ render_card("Create Bill", "Generate customer bills.", "create_bill",
     "fa-receipt") }} {{ render_card("Employee Dashboard", "Manage employee

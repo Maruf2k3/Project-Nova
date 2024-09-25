@@ -1,0 +1,30 @@
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto mt-12 p-8 bg-gray-100 rounded-lg shadow-lg">
+  <div class="text-center">
+    <!-- Error Icon -->
+    {% if error_code == 400 %}
+    <i class="fas fa-exclamation-triangle text-yellow-500 text-6xl"></i>
+    {% elif error_code == 404 %}
+    <i class="fas fa-search-minus text-red-500 text-6xl"></i>
+    {% elif error_code == 500 %}
+    <i class="fas fa-tools text-orange-500 text-6xl"></i>
+    {% elif error_code == 302 %}
+    <i class="fas fa-exchange-alt text-blue-500 text-6xl"></i>
+    {% else %}
+    <i class="fas fa-question-circle text-gray-500 text-6xl"></i>
+    {% endif %}
+
+    <!-- Error Code and Message -->
+    <h1 class="text-4xl font-bold mt-4">Error {{ error_code }}</h1>
+    <p class="text-xl mt-4">{{ message }}</p>
+
+    <!-- Back to Home Button -->
+    <a
+      href="{{ url_for('landing_page') }}"
+      class="mt-8 inline-block bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md"
+    >
+      Back to Home
+    </a>
+  </div>
+</div>
+{% endblock %}

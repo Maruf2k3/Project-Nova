@@ -109,7 +109,7 @@
             Notes
           </th>
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
-            Donwlaod Bill
+            Actions
           </th>
         </tr>
       </thead>
@@ -135,6 +135,18 @@
             >
               <i class="fa-solid fa-download"></i>
             </button>
+            <form
+              action="{{ url_for('delete_sale', sale_id=sale.id) }}"
+              method="POST"
+              style="display: inline"
+            >
+              <button
+                type="submit"
+                class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
+              >
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </form>
           </td>
         </tr>
         {% endfor %}
@@ -215,7 +227,7 @@
     doc.setFont("helvetica", "normal");
     sale.items.forEach((item) => {
       // Split long item names into multiple lines
-      const itemNameLines = doc.splitTextToSize(item.name, 30); // Adjusted width for the item column
+      const itemNameLines = doc.splitTextToSize(item.name, 25); // Adjusted width for the item column
 
       // Print the item name (multi-line if necessary)
       doc.text(itemNameLines, 10, y);

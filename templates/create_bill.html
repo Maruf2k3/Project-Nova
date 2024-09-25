@@ -126,11 +126,12 @@
         <tbody id="bill-items"></tbody>
       </table>
 
-      <!-- Customer and Server Selection (side by side) -->
+      <!-- Customer Group and Server Selection (side by side) -->
       <div
         class="flex justify-between mt-6 bg-gray-100 p-4 rounded-lg shadow-md"
       >
-        <div class="w-1/2 pr-2">
+        <!-- Customer Section -->
+        <div class="w-1/3 pr-2">
           <label for="customer" class="block text-sm font-medium text-gray-700"
             >Customer</label
           >
@@ -145,7 +146,25 @@
             {% endfor %}
           </select>
         </div>
-        <div class="w-1/2 pl-2">
+
+        <!-- Group Dropdown -->
+        <div class="w-1/3 pr-2">
+          <label for="group" class="block text-sm font-medium text-gray-700"
+            >Select Group:</label
+          >
+          <select
+            name="group"
+            id="group"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-md focus:ring-2 focus:ring-blue-400 p-2"
+          >
+            <option value="">None</option>
+            {% for group in groups %}
+            <option value="{{ group.id }}">{{ group.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <!-- Servername Section -->
+        <div class="w-1/3 pl-2">
           <label class="block text-sm font-medium text-gray-700"
             >Server Name</label
           >
@@ -424,6 +443,22 @@
       }
     });
   }
+
+  document.getElementById("customer").addEventListener("change", function () {
+    if (this.value !== "") {
+      document.getElementById("group").disabled = true;
+    } else {
+      document.getElementById("group").disabled = false;
+    }
+  });
+
+  document.getElementById("group").addEventListener("change", function () {
+    if (this.value !== "") {
+      document.getElementById("customer").disabled = true;
+    } else {
+      document.getElementById("customer").disabled = false;
+    }
+  });
 
   function printBill() {
     const serverName = document.getElementById("server").textContent.trim();

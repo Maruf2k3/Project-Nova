@@ -94,5 +94,52 @@ class ServeMenu(db.Model):
 
     def __repr__(self):
         return f"<ServeMenu {self.name}>"
+    
+class Group(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    total_due = db.Column(db.Float, default=0.0)  # Amount the group owes
+    total_paid = db.Column(db.Float, default=0.0)  # Total amount paid by the group
+
+    # Relation to track group payments
+    payments = db.relationship('GroupPayment', backref='related_group', lazy=True)
+
+    # Relation to track group sales
+    sales = db.relationship('GroupSale', backref='related_group', lazy=True)
+
+
+class GroupSale(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_number = db.Column(db.String(50), nullable=False, unique=True, default=lambda: str(uuid.uuid4()))
+    date = db.Column(db.String(50), nullable=False)
+    time = db.Column(db.String(50), nullable=False)
+    items = db.Column(db.Text, nullable=False)  # Store items as JSON (item name, quantity, price)
+    subtotal = db.Column(db.Float, nullable=False)
+    tax = db.Column(db.Float, nullable=False)
+    grand_total = db.Column(db.Float, nullable=False)
+    discount = db.Column(db.Float, nullable=True, default=0.0)
+    payment_method = db.Column(db.String(50) , nullable=False)
+    server = db.Column(db.String(100), nullable=False)  # Added server field
+    # New notes field
+    notes = db.Column(db.String(255), nullable=True, default='')
+
+    # Foreign key to reference the Group
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=False)
+
+    # The group that this sale belongs to
+    group = db.relationship('Group', backref=db.backref('group_sales', lazy=True))
+
+
+class GroupPayment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=False)
+    amount_paid = db.Column(db.Float, nullable=False)
+    date_paid = db.Column(db.DateTime)
+
+    # Relationship with Group
+    group = db.relationship('Group', backref=db.backref('group_payments', lazy=True))
+
+
+
 
 
