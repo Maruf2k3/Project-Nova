@@ -92,7 +92,6 @@
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
             Time
           </th>
-
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">
             Items
           </th>
@@ -114,7 +113,7 @@
         </tr>
       </thead>
       <tbody class="text-gray-700">
-        {% for sale in sales %}
+        {% for sale in sales.items %}
         <tr class="hover:bg-gray-100 transition duration-300">
           <td class="px-6 py-4">{{ sale.date }}</td>
           <td class="px-6 py-4">{{ sale.time }}</td>
@@ -129,24 +128,26 @@
           <td class="px-6 py-4">{{ sale.server }}</td>
           <td class="px-6 py-4">{{ sale.notes }}</td>
           <td class="px-6 py-4">
-            <button
-              onclick="generateBillPDF('{{ sale.id }}')"
-              class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
-            >
-              <i class="fa-solid fa-download"></i>
-            </button>
-            <form
-              action="{{ url_for('delete_sale', sale_id=sale.id) }}"
-              method="POST"
-              style="display: inline"
-            >
+            <div class="flex">
               <button
-                type="submit"
-                class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
+                onclick="generateBillPDF('{{ sale.id }}')"
+                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 mx-2 rounded-lg shadow-md"
               >
-                <i class="fa-solid fa-trash"></i>
+                <i class="fa-solid fa-download"></i>
               </button>
-            </form>
+              <form
+                action="{{ url_for('delete_sale', sale_id=sale.id) }}"
+                method="POST"
+                style="display: inline"
+              >
+                <button
+                  type="submit"
+                  class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
+                >
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -154,15 +155,88 @@
     </table>
   </div>
 
-  <!-- Download Button -->
+  <!-- Pagination Links -->
+  <div class="flex justify-center mt-6">
+    <nav class="inline-flex shadow-sm">
+      {% if sales.has_prev %} {% if range_type %}
+      <!-- If this is a predefined report (e.g., today, month, year), use the range_type -->
+      <a
+        href="{{ url_for('sales_reports_predefined', range_type=range_type, page=sales.prev_num) }}"
+        class="relative inline-flex items-center px-4 py-2 bg-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-300"
+      >
+        <i class="fa fa-chevron-left"></i>
+      </a>
+      {% else %}
+      <!-- If this is a custom report (date range), use start_date and end_date -->
+      <a
+        href="{{ url_for('sales_reports', page=sales.prev_num, start_date=start_date, end_date=end_date) }}"
+        class="relative inline-flex items-center px-4 py-2 bg-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-300"
+      >
+        <i class="fa fa-chevron-left"></i>
+      </a>
+      {% endif %} {% else %}
+      <span
+        class="relative inline-flex items-center px-4 py-2 bg-gray-100 text-sm font-medium text-gray-400"
+      >
+        <i class="fa fa-chevron-left"></i>
+      </span>
+      {% endif %} {% for page_num in sales.iter_pages() %} {% if page_num %} {%
+      if range_type %}
+      <a
+        href="{{ url_for('sales_reports_predefined', range_type=range_type, page=page_num) }}"
+        class="relative inline-flex items-center px-4 py-2 {{ 'bg-blue-600 text-white' if page_num == sales.page else 'bg-gray-200 text-gray-500 hover:bg-gray-300' }} text-sm font-medium"
+      >
+        {{ page_num }}
+      </a>
+      {% else %}
+      <a
+        href="{{ url_for('sales_reports', page=page_num, start_date=start_date, end_date=end_date) }}"
+        class="relative inline-flex items-center px-4 py-2 {{ 'bg-blue-600 text-white' if page_num == sales.page else 'bg-gray-200 text-gray-500 hover:bg-gray-300' }} text-sm font-medium"
+      >
+        {{ page_num }}
+      </a>
+      {% endif %} {% else %}
+      <span
+        class="relative inline-flex items-center px-4 py-2 bg-gray-100 text-sm font-medium text-gray-400"
+        >...</span
+      >
+      {% endif %} {% endfor %} {% if sales.has_next %} {% if range_type %}
+      <a
+        href="{{ url_for('sales_reports_predefined', range_type=range_type, page=sales.next_num) }}"
+        class="relative inline-flex items-center px-4 py-2 bg-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-300"
+      >
+        <i class="fa fa-chevron-right"></i>
+      </a>
+      {% else %}
+      <a
+        href="{{ url_for('sales_reports', page=sales.next_num, start_date=start_date, end_date=end_date) }}"
+        class="relative inline-flex items-center px-4 py-2 bg-gray-200 text-sm font-medium text-gray-500 hover:bg-gray-300"
+      >
+        <i class="fa fa-chevron-right"></i>
+      </a>
+      {% endif %} {% else %}
+      <span
+        class="relative inline-flex items-center px-4 py-2 bg-gray-100 text-sm font-medium text-gray-400"
+      >
+        <i class="fa fa-chevron-right"></i>
+      </span>
+      {% endif %}
+    </nav>
+  </div>
+  <!-- Download Buttons -->
   <div class="mt-6">
     <a
-      href="{{ url_for('download_sales_report', start_date=start_date, end_date=end_date) }}"
+      href="{% if range_type %}
+              {{ url_for('download_sales_report', start_date=start_date.strftime('%Y-%m-%d'), end_date=end_date.strftime('%Y-%m-%d'), page_only='false') }}
+            {% else %}
+              {{ url_for('download_sales_report', start_date=start_date or '', end_date=end_date or '', page_only='false') }}
+            {% endif %}"
       class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300"
     >
       Download Report
     </a>
   </div>
+
   {% else %}
   <p class="mt-6 p-6 bg-zinc-800 rounded-lg text-red-500 font-bold">
     No sales found for the selected date range.

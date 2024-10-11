@@ -81,19 +81,6 @@ class Attendance(db.Model):
             else:
                 return f"{minutes} minute(s)"
         return None
-
-
-class ServeMenu(db.Model):
-    __tablename__ = 'serve_menu'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    category = db.Column(db.String(100), nullable=False)
-    price = db.Column(db.Float, nullable=False)
-    description = db.Column(db.Text, nullable=True)  # New description field
-    picture = db.Column(db.String(200), nullable=True)  # Path to the image file
-
-    def __repr__(self):
-        return f"<ServeMenu {self.name}>"
     
 class Group(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -138,6 +125,28 @@ class GroupPayment(db.Model):
 
     # Relationship with Group
     group = db.relationship('Group', backref=db.backref('group_payments', lazy=True))
+
+class Inventory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    quantity = db.Column(db.Float, nullable=False, default=0.0)  # Total stock
+    unit = db.Column(db.String(20), nullable=False)  # Unit like kg, liters, etc.
+
+    def add_quantity(self, amount):
+        """Method to add quantity when new stock arrives."""
+        self.quantity += amount
+
+    def subtract_quantity(self, amount):
+        """Method to subtract quantity when stock is used."""
+        self.quantity -= amount if self.quantity >= amount else 0
+
+class InventoryLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    item_id = db.Column(db.Integer, db.ForeignKey('inventory.id'), nullable=False)
+    used_quantity = db.Column(db.Float, nullable=False)
+    inventory_item = db.relationship('Inventory', backref='usage_logs')
+
 
 
 

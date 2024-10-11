@@ -14,3 +14,6 @@ package-lock.json
 # Ignore .env files or secrets (if you use one)
 .env
 
+dud.py
+output.txt
+data/

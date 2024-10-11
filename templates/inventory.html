@@ -1,0 +1,294 @@
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <h1 class="text-3xl font-bold text-gray-800 mb-6">Manage Inventory</h1>
+
+  <!-- Upload Excel Form and Add Item Form Side by Side -->
+  <div class="flex space-x-8">
+    <!-- Upload Excel Form -->
+    <div class="w-1/2">
+      <h2 class="text-xl font-bold mb-4">Bulk Update Inventory via Excel</h2>
+      <form
+        method="POST"
+        action="{{ url_for('upload_inventory') }}"
+        enctype="multipart/form-data"
+        onsubmit="return checkRole()"
+      >
+        <input
+          type="file"
+          name="file"
+          id="file"
+          class="w-full px-4 py-3 border rounded-lg mb-3"
+          required
+        />
+        <button
+          type="submit"
+          class="bg-green-600 text-white font-bold py-3 px-6 rounded-lg"
+        >
+          Upload File
+        </button>
+      </form>
+    </div>
+
+    <!-- Add Single Inventory Item Form -->
+    <div class="w-1/2">
+      <h2 class="text-xl font-bold mb-4">Add New Inventory Item</h2>
+      <form
+        method="POST"
+        action="{{ url_for('add_inventory') }}"
+        onsubmit="return checkRole()"
+      >
+        <div class="mb-3">
+          <label for="name" class="block text-lg font-medium text-gray-700 mb-2"
+            >Item Name:</label
+          >
+          <input
+            type="text"
+            name="name"
+            id="name"
+            class="w-full px-4 py-3 border rounded-lg"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label
+            for="quantity"
+            class="block text-lg font-medium text-gray-700 mb-2"
+            >Quantity:</label
+          >
+          <input
+            type="number"
+            step="any"
+            name="quantity"
+            id="quantity"
+            class="w-full px-4 py-3 border rounded-lg"
+            required
+          />
+        </div>
+        <div class="mb-3">
+          <label for="unit" class="block text-lg font-medium text-gray-700 mb-2"
+            >Unit:</label
+          >
+          <select
+            name="unit"
+            id="unit"
+            class="w-full px-4 py-3 border rounded-lg"
+            required
+          >
+            <option value="kg">kg</option>
+            <option value="liters">liters</option>
+            <option value="cans">cans</option>
+            <option value="mutha">mutha</option>
+          </select>
+        </div>
+        <button
+          type="submit"
+          class="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg"
+        >
+          Add Item
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="mt-8 mb-6">
+    <input
+      type="text"
+      id="searchInput"
+      placeholder="Search items..."
+      class="w-full px-4 py-3 border rounded-lg"
+      onkeyup="searchInventory()"
+    />
+  </div>
+
+  <!-- Inventory Table Display -->
+  <h2 class="text-2xl font-bold mt-8 mb-4">Current Inventory</h2>
+  <table class="min-w-full bg-white border border-gray-300 mt-6">
+    <thead>
+      <tr>
+        <th
+          class="py-3 px-6 bg-gray-100 font-bold uppercase text-sm text-gray-600 border-b border-gray-300"
+        >
+          Item Name
+        </th>
+        <th
+          class="py-3 px-6 bg-gray-100 font-bold uppercase text-sm text-gray-600 border-b border-gray-300"
+        >
+          Quantity
+        </th>
+        <th
+          class="py-3 px-6 bg-gray-100 font-bold uppercase text-sm text-gray-600 border-b border-gray-300"
+        >
+          Unit
+        </th>
+        <th
+          class="py-3 px-6 bg-gray-100 font-bold uppercase text-sm text-gray-600 border-b border-gray-300"
+        >
+          Actions
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in inventory_items %}
+      <tr>
+        <td class="py-4 px-6 border-b border-gray-300">{{ item.name }}</td>
+        <td class="py-4 px-6 border-b border-gray-300">
+          {{ item.quantity | round(3)}}
+        </td>
+        <td class="py-4 px-6 border-b border-gray-300">{{ item.unit }}</td>
+        <td class="py-4 px-6 border-b border-gray-300">
+          <!-- Edit and Delete Icons -->
+          <button
+            onclick="openEditModal('{{ item.id }}', '{{ item.name }}', '{{ item.quantity }}', '{{ item.unit }}')"
+            class="mr-2"
+          >
+            <i class="fas fa-edit text-yellow-500 hover:text-yellow-600"></i>
+          </button>
+          <form
+            action="{{ url_for('delete_inventory', item_id=item.id) }}"
+            method="POST"
+            style="display: inline"
+            onsubmit="return checkRole()"
+          >
+            <button type="submit">
+              <i class="fas fa-trash-alt text-red-600 hover:text-red-700"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Edit Modal -->
+<div
+  id="editModal"
+  class="fixed z-10 inset-0 flex items-center justify-center hidden"
+>
+  <div class="bg-white rounded-lg shadow-lg max-w-md w-full p-6 relative">
+    <h2 class="text-2xl font-bold mb-4">Edit Inventory Item</h2>
+    <form
+      method="POST"
+      action="{{ url_for('edit_inventory') }}"
+      onsubmit="return checkRole()"
+    >
+      <input type="hidden" id="edit_item_id" name="item_id" />
+      <div class="mb-3">
+        <label
+          for="edit_name"
+          class="block text-lg font-medium text-gray-700 mb-2"
+          >Item Name:</label
+        >
+        <input
+          type="text"
+          id="edit_name"
+          name="name"
+          class="w-full px-4 py-3 border rounded-lg"
+        />
+      </div>
+      <div class="mb-3">
+        <label
+          for="edit_quantity"
+          class="block text-lg font-medium text-gray-700 mb-2"
+          >Quantity:</label
+        >
+        <input
+          type="number"
+          step="any"
+          id="edit_quantity"
+          name="quantity"
+          class="w-full px-4 py-3 border rounded-lg"
+        />
+      </div>
+      <div class="mb-3">
+        <label
+          for="edit_unit"
+          class="block text-lg font-medium text-gray-700 mb-2"
+          >Unit:</label
+        >
+        <select
+          id="edit_unit"
+          name="unit"
+          class="w-full px-4 py-3 border rounded-lg"
+        >
+          <option value="kg">kg</option>
+          <option value="liters">liters</option>
+          <option value="cans">cans</option>
+        </select>
+      </div>
+      <div class="flex justify-end space-x-4">
+        <button
+          type="submit"
+          class="bg-green-600 text-white font-bold py-3 px-6 rounded-lg"
+        >
+          Update Item
+        </button>
+        <button
+          type="button"
+          onclick="closeEditModal()"
+          class="bg-gray-500 text-white font-bold py-3 px-6 rounded-lg"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+    <button
+      class="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+      onclick="closeEditModal()"
+    >
+      <i class="fa fa-times text-2xl"></i>
+    </button>
+  </div>
+</div>
+
+<script>
+  // Function to check role and prevent non-admin actions
+  function checkRole() {
+    const userRole = "{{ current_user.role }}";
+    if (userRole !== "admin") {
+      Swal.fire({
+        icon: "error",
+        title: "Access Denied",
+        text: "You do not have permission to perform this action.",
+        confirmButtonColor: "#d33",
+        confirmButtonText: "OK",
+      });
+      return false; // Prevent form submission
+    }
+    return true; // Allow form submission for admins
+  }
+
+  // Open Edit Modal
+  function openEditModal(id, name, quantity, unit) {
+    document.getElementById("edit_item_id").value = id;
+    document.getElementById("edit_name").value = name;
+    document.getElementById("edit_quantity").value = quantity;
+    document.getElementById("edit_unit").value = unit;
+    document.getElementById("editModal").classList.remove("hidden");
+  }
+
+  // Close Edit Modal
+  function closeEditModal() {
+    document.getElementById("editModal").classList.add("hidden");
+  }
+
+  // Search Inventory Function
+  function searchInventory() {
+    let input = document.getElementById("searchInput").value.toLowerCase();
+    let rows = document.querySelectorAll("tbody tr");
+
+    rows.forEach((row) => {
+      let itemName = row
+        .querySelector("td:first-child")
+        .textContent.toLowerCase();
+      if (itemName.includes(input)) {
+        row.style.display = "";
+      } else {
+        row.style.display = "none";
+      }
+    });
+  }
+</script>
+
+{% endblock %}

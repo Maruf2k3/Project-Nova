@@ -2,31 +2,31 @@ import io
 import os
 import csv
 import uuid
-from flask import json, render_template, request, redirect, url_for, flash, jsonify, Response, current_app
+from flask import json, render_template, request, redirect, url_for, flash, jsonify, Response
 from flask_login import login_user, login_required, logout_user, current_user
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
+from flask_jwt_extended import create_access_token, create_refresh_token, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
 from sqlalchemy import func
-from models import User, MenuItem,ServeMenu, Sale, Customer, Employee, Attendance,Group,GroupSale,GroupPayment,db
+from models import User, MenuItem, Sale, Customer, Employee, Attendance,Group,GroupSale,GroupPayment,Inventory,InventoryLog,db
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
 import openpyxl  # To handle Excel files
-from flask_socketio import emit
+# from flask_socketio import emit
 
-ALLOWED_EXTENSIONS = {'xls', 'xlsx' , 'png', 'jpg', 'jpeg'}
+ALLOWED_EXTENSIONS = {'xls', 'xlsx'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def register_routes(app , socketio):
+def register_routes(app):
 
-    @socketio.on('connect')
-    def handle_connect():
-        print('Client connected')
+    # @socketio.on('connect')
+    # def handle_connect():
+    #     print('Client connected')
 
-    @socketio.on('disconnect')
-    def handle_disconnect():
-        print('Client disconnected')
+    # @socketio.on('disconnect')
+    # def handle_disconnect():
+    #     print('Client disconnected')
 
     # 1. Error routes Handeled 
     @app.errorhandler(Exception)
@@ -383,8 +383,8 @@ def register_routes(app , socketio):
             # Commit the transaction and emit event for all connected clients
             db.session.commit()
 
-            # Emit event with the invoice number
-            socketio.emit('new_bill_created', {'invoice_number': invoice_number}, to='/')
+            # # Emit event with the invoice number
+            # socketio.emit('new_bill_created', {'invoice_number': invoice_number}, to='/')
 
             flash('Bill created successfully!', 'success')
             return redirect(url_for('dashboard'))
@@ -411,36 +411,44 @@ def register_routes(app , socketio):
         if current_user.role not in ['admin', 'manager']:
             return redirect(url_for('dashboard'))
 
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
         sales = []
         start_date_str = None
         end_date_str = None
 
         if request.method == 'POST':
+            # Get dates from form submission
             start_date_str = request.form.get('start_date')
             end_date_str = request.form.get('end_date')
+        else:
+            # Get dates from query parameters (for pagination links)
+            start_date_str = request.args.get('start_date')
+            end_date_str = request.args.get('end_date')
 
+        if start_date_str and end_date_str:
+            # Validate the dates
             try:
-                # Ensure dates are in the correct format
                 datetime.strptime(start_date_str, '%Y-%m-%d')
                 datetime.strptime(end_date_str, '%Y-%m-%d')
             except ValueError:
                 flash('Invalid date format.', 'error')
                 return redirect(url_for('sales_reports'))
 
-            # Fetch only customer sales and walk-in sales (group_id is None)
+            # Fetch sales data within the date range with pagination
             sales = Sale.query.filter(
                 func.date(Sale.date) >= start_date_str.strip(),
                 func.date(Sale.date) <= end_date_str.strip()
-            ).all()
+            ).order_by(Sale.date.desc()).paginate(page=page, per_page=per_page)
 
-            if not sales:
+            if not sales.items and page == 1:
                 flash('No sales found within the selected date range.', 'error')
-                return render_template('sales_reports.html', sales=sales)
+        else:
+            # If no dates provided, render the empty form
+            sales = None
 
-            return render_template('sales_reports.html', sales=sales, start_date=start_date_str, end_date=end_date_str)
+        return render_template('sales_reports.html', sales=sales, start_date=start_date_str, end_date=end_date_str)
 
-        # Render the form for GET request
-        return render_template('sales_reports.html', sales=sales)
     
     # 7.3 Predefined Sales Report Route for different date ranges
     @app.route("/sales-reports/predefined/<string:range_type>", methods=['GET'])
@@ -449,6 +457,10 @@ def register_routes(app , socketio):
         if current_user.role not in ['admin', 'manager']:
             return redirect(url_for('dashboard'))
 
+        page = request.args.get('page', 1, type=int)
+        per_page = 15
+
+        # Determine date range based on predefined range_type
         today = datetime.now().date()
         if range_type == 'today':
             start_date = end_date = today
@@ -462,24 +474,25 @@ def register_routes(app , socketio):
             flash('Invalid range type.', 'error')
             return redirect(url_for('sales_reports'))
 
+        # Convert dates to string format for querying
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = end_date.strftime('%Y-%m-%d')
 
-        # Fetch sales data within the date range
+        # Query the sales data with pagination
         sales = Sale.query.filter(
             func.date(Sale.date) >= start_date_str,
             func.date(Sale.date) <= end_date_str
-        ).all()
+        ).order_by(Sale.date.desc()).paginate(page=page, per_page=per_page)
 
-        if not sales:
+        if not sales.items and page == 1:
             flash('No sales found for the selected range.', 'error')
-            return render_template('sales_reports.html', sales=sales)
 
-        # Render the template with sales data
-        return render_template('sales_reports.html', sales=sales, start_date=start_date_str, end_date=end_date_str)
+        # Render template with pagination and sales data
+        return render_template('sales_reports.html', sales=sales, range_type=range_type , start_date=start_date, end_date=end_date)
 
 
     # 7.4 Route to Download Sales Report Customer
+    # Updated Download Sales Report Route
     @app.route("/download-sales-report", methods=['GET'])
     @login_required
     def download_sales_report():
@@ -495,8 +508,10 @@ def register_routes(app , socketio):
 
         try:
             # Ensure dates are in the correct format
-            datetime.strptime(start_date_str, '%Y-%m-%d')
-            datetime.strptime(end_date_str, '%Y-%m-%d')
+            if start_date_str:
+                datetime.strptime(start_date_str, '%Y-%m-%d')
+            if end_date_str:
+                datetime.strptime(end_date_str, '%Y-%m-%d')
         except ValueError:
             flash('Invalid date format.', 'error')
             return redirect(url_for('sales_reports'))
@@ -514,13 +529,12 @@ def register_routes(app , socketio):
         # Generate the CSV data in memory
         output = io.StringIO()
         csv_writer = csv.writer(output)
-        csv_writer.writerow(['Invoice Number', 'Date', 'Time', 'Customer', 'Items', 'Subtotal','Tax','Discount', 'Grand Total', 'Served By','Payment Method', 'Notes'])
+        csv_writer.writerow(['Invoice Number', 'Date', 'Time', 'Customer', 'Items', 'Subtotal', 'Tax', 'Discount', 'Grand Total', 'Served By', 'Payment Method', 'Notes'])
 
         for sale in sales:
             customer_name = sale.customer.name if sale.customer else "No Customer"
             items = json.loads(sale.items)
 
-            # Handle missing 'qty' gracefully
             item_list = "; ".join([f"{item['name']} (Qty: {item.get('qty', 1)})" for item in items])
 
             csv_writer.writerow([
@@ -549,6 +563,8 @@ def register_routes(app , socketio):
                 'Content-Disposition': f'attachment;filename=salesReport_{start_date_str}_{end_date_str}.csv'
             }
         )
+
+
 
     #-----------------------CRM-------------------#
     # 8.1 Customer Management route
@@ -738,8 +754,8 @@ def register_routes(app , socketio):
         db.session.add(attendance)
         db.session.commit()
 
-        # Emit the event to all clients
-        socketio.emit('employee_clocked_in', {'employee_id': employee.id, 'employee_name': employee.name}, to='/')
+        # # Emit the event to all clients
+        # socketio.emit('employee_clocked_in', {'employee_id': employee.id, 'employee_name': employee.name}, to='/')
 
 
         flash(f'{employee.name} clocked in successfully!', 'success')
@@ -754,8 +770,8 @@ def register_routes(app , socketio):
             clock_out_time = datetime.now(pytz.timezone("Asia/Dubai"))
             attendance.clock_out = clock_out_time
             db.session.commit()
-             # Emit the event to all clients
-            socketio.emit('employee_clocked_out', {'employee_id': employee_id}, to='/')
+            # # Emit the event to all clients
+            # socketio.emit('employee_clocked_out', {'employee_id': employee_id}, to='/')
 
         else:
             flash('No clock-in record found for the employee.', 'error')
@@ -789,95 +805,6 @@ def register_routes(app , socketio):
         attendance_records = Attendance.query.filter_by(employee_id=employee_id).all()
         return render_template('employee_attendance.html', employee=employee, attendance_records=attendance_records)
 
-    #-------------------View Menu Managment------------------#
-    # 10.1 Serve Menu Route
-    @app.route('/serveMenu', methods=['GET'])
-    @login_required
-    def serve_menu():
-        categories = db.session.query(ServeMenu.category).distinct().all()
-        categories = [c[0] for c in categories]
-        menu_items = ServeMenu.query.all()
-        return render_template('serveMenu.html', categories=categories, menu_items=menu_items)
-
-    # 10.2 Serve Menu Admin Route
-    @app.route('/serveMenuAdmin', methods=['GET', 'POST'])
-    @login_required
-    def serve_menu_admin():
-        if current_user.role != 'admin':
-            flash('Access denied.', 'error')
-            return redirect(url_for('dashboard'))
-
-        if request.method == 'POST':
-            # Handle CRUD operations
-            action = request.form.get('action')
-            if action == 'add':
-                # Add new menu item
-                name = request.form.get('name')
-                category = request.form.get('category')
-                price = request.form.get('price')
-                description = request.form.get('description')
-                picture_file = request.files.get('picture')
-                picture_filename = None
-                if picture_file and allowed_file(picture_file.filename):
-                    picture_filename = secure_filename(picture_file.filename)
-                    picture_path = os.path.join(current_app.config['UPLOAD_FOLDER'], picture_filename)
-                    picture_file.save(picture_path)
-
-                new_item = ServeMenu(
-                    name=name,
-                    category=category,
-                    price=price,
-                    description=description,
-                    picture=picture_filename
-                )
-                db.session.add(new_item)
-                db.session.commit()
-                flash('Menu item added successfully.', 'success')
-            elif action == 'edit':
-                # Edit existing menu item
-                item_id = request.form.get('item_id')
-                item = ServeMenu.query.get(item_id)
-                if item:
-                    item.name = request.form.get('name')
-                    item.category = request.form.get('category')
-                    item.price = request.form.get('price')
-                    item.description = request.form.get('description')
-                    picture_file = request.files.get('picture')
-                    if picture_file and allowed_file(picture_file.filename):
-                        # Delete old picture if exists
-                        if item.picture:
-                            old_picture_path = os.path.join(current_app.config['UPLOAD_FOLDER'], item.picture)
-                            if os.path.exists(old_picture_path):
-                                os.remove(old_picture_path)
-                        picture_filename = secure_filename(picture_file.filename)
-                        picture_path = os.path.join(current_app.config['UPLOAD_FOLDER'], picture_filename)
-                        picture_file.save(picture_path)
-                        item.picture = picture_filename
-                    db.session.commit()
-                    flash('Menu item updated successfully.', 'success')
-                else:
-                    flash('Menu item not found.', 'error')
-            elif action == 'delete':
-                # Delete menu item
-                item_id = request.form.get('item_id')
-                item = ServeMenu.query.get(item_id)
-                if item:
-                    # Delete picture if exists
-                    if item.picture:
-                        picture_path = os.path.join(current_app.config['UPLOAD_FOLDER'], item.picture)
-                        if os.path.exists(picture_path):
-                            os.remove(picture_path)
-                    db.session.delete(item)
-                    db.session.commit()
-                    flash('Menu item deleted successfully.', 'success')
-                else:
-                    flash('Menu item not found.', 'error')
-            return redirect(url_for('serve_menu_admin'))
-
-        # GET request
-        menu_items = ServeMenu.query.all()
-        return render_template('serveMenuAdminPage.html', menu_items=menu_items)
-
     #---------------------Group Managment--------------------#
     #11.1 To get Group sales Report
     @app.route("/group-sales-reports", methods=['GET', 'POST'])
@@ -905,20 +832,52 @@ def register_routes(app , socketio):
                 return redirect(url_for('group_sales_reports'))
 
             # Fetch group sales data within the date range
-            group_sales = GroupSale.query.filter(
+            query = GroupSale.query.filter(
                 func.date(GroupSale.date) >= start_date_str.strip(),
-                func.date(GroupSale.date) <= end_date_str.strip(),
-                GroupSale.group_id == group_id
-            ).all()
+                func.date(GroupSale.date) <= end_date_str.strip()
+            )
+            if group_id:
+                query = query.filter(GroupSale.group_id == group_id)
+
+            group_sales = query.all()
 
             if not group_sales:
                 flash('No group sales found within the selected date range.', 'error')
                 return render_template('group_sales_reports.html', group_sales=group_sales)
 
-            return render_template('group_sales_reports.html', group_sales=group_sales, start_date=start_date_str, end_date=end_date_str, group_id=group_id)
-
         groups = Group.query.all()  # Load all groups for selection
-        return render_template('group_sales_reports.html', group_sales=group_sales, groups=groups)
+        return render_template('group_sales_reports.html', group_sales=group_sales, groups=groups, start_date=start_date_str, end_date=end_date_str, group_id=group_id)
+
+    # 11.1.1 Predefined Group Sales Report Route for different date ranges
+    @app.route("/group-sales-reports/predefined/<string:range_type>", methods=['GET'])
+    @login_required
+    def group_sales_reports_predefined(range_type):
+        if current_user.role not in ['admin', 'manager']:
+            return redirect(url_for('dashboard'))
+
+        today = datetime.now().date()
+        if range_type == 'today':
+            start_date = end_date = today
+        elif range_type == 'month':
+            start_date = today.replace(day=1)
+            end_date = today
+        elif range_type == 'year':
+            start_date = today.replace(month=1, day=1)
+            end_date = today
+        else:
+            flash('Invalid range type.', 'error')
+            return redirect(url_for('group_sales_reports'))
+
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str = end_date.strftime('%Y-%m-%d')
+
+        group_sales = GroupSale.query.filter(
+            func.date(GroupSale.date) >= start_date_str,
+            func.date(GroupSale.date) <= end_date_str
+        ).all()
+
+        groups = Group.query.all()
+        return render_template('group_sales_reports.html', group_sales=group_sales, groups=groups, start_date=start_date_str, end_date=end_date_str, range_type=range_type)
     
     # 11.2 Root route for groups
     @app.route('/group-management', methods=['GET'])
@@ -926,9 +885,10 @@ def register_routes(app , socketio):
     def group_management():
         if current_user.role not in ['admin', 'manager']:
             return redirect(url_for('dashboard'))
+        userRole = current_user.role
 
         groups = Group.query.all()  # Fetch all groups from the database
-        return render_template('group_management.html', groups=groups)
+        return render_template('group_management.html', groups=groups , role = userRole)
     
     # 11.3 For creating new groups
     @app.route('/groups/create', methods=['POST'])
@@ -1018,10 +978,6 @@ def register_routes(app , socketio):
         end_date_str = request.args.get('end_date')
         group_id = request.args.get('group_id')
 
-        if not start_date_str or not end_date_str or not group_id:
-            flash('Invalid parameters for report download.', 'error')
-            return redirect(url_for('group_sales_reports'))
-
         try:
             # Ensure dates are in the correct format
             datetime.strptime(start_date_str, '%Y-%m-%d')
@@ -1031,48 +987,45 @@ def register_routes(app , socketio):
             return redirect(url_for('group_sales_reports'))
 
         # Fetch group sales data within the date range
-        group_sales = GroupSale.query.filter(
+        query = GroupSale.query.filter(
             func.date(GroupSale.date) >= start_date_str.strip(),
-            func.date(GroupSale.date) <= end_date_str.strip(),
-            GroupSale.group_id == group_id
-        ).all()
+            func.date(GroupSale.date) <= end_date_str.strip()
+        )
+        if group_id:
+            query = query.filter(GroupSale.group_id == group_id)
+
+        group_sales = query.all()
 
         if not group_sales:
-            flash('No group sales found within the selected date range.', 'error')
+            flash('No group sales found to generate the report.', 'error')
             return redirect(url_for('group_sales_reports'))
 
-        # Generate the CSV data in memory
+        # Create CSV file in memory
         output = io.StringIO()
-        csv_writer = csv.writer(output)
-        csv_writer.writerow(['Invoice Number', 'Date', 'Time', 'Items', 'Subtotal', 'Tax', 'Grand Total', 'Payment Method' , 'Served By' , 'Note'])
+        writer = csv.writer(output)
+        writer.writerow(['Invoice Number', 'Date', 'Time', 'Group', 'Items', 'Subtotal', 'Tax', 'Discount', 'Grand Total', 'Served By', 'Payment Method', 'Notes'])
 
         for sale in group_sales:
             items = json.loads(sale.items)
-            item_list = "; ".join([f"{item['name']} (Qty: {item.get('qty', 1)})" for item in items])
-            csv_writer.writerow([
-                sale.invoice_number,
+            items_str = ', '.join([f"{item['name']} (Qty: {item.get('qty', 1)})" for item in items])
+            writer.writerow([sale.invoice_number,
                 sale.date,
                 sale.time,
-                item_list,
+                sale.group.name,
+                items_str,
                 sale.subtotal,
                 sale.tax,
+                sale.discount,
                 sale.grand_total,
-                sale.payment_method,
                 sale.server,
-                sale.notes
-            ])
+                sale.payment_method,
+                sale.notes])
 
-        # Move to the beginning of the StringIO object
         output.seek(0)
 
-        # Create a Response object with the CSV data
-        return Response(
-            output.getvalue(),
-            mimetype='text/csv',
-            headers={
-                'Content-Disposition': f'attachment;filename=groupSalesReport_{start_date_str}_{end_date_str}.csv'
-            }
-        )
+        return Response(output, mimetype='text/csv', headers={
+            'Content-Disposition': f'attachment;filename=group_sales_report_{start_date_str}_to_{end_date_str}.csv'
+        })
     
     # 11.9 Download payment history of the Group
     @app.route("/group/payment-history/download/<int:group_id>", methods=['GET'])
@@ -1105,10 +1058,13 @@ def register_routes(app , socketio):
     @app.route('/groups/reset-paid/<int:group_id>', methods=['POST'])
     @login_required
     def reset_total_paid(group_id):
+        if current_user.role not in ['admin']:
+            return redirect(url_for('dashboard'))
         group = Group.query.get_or_404(group_id)
 
         # Reset the total paid amount for the group
         group.total_paid = 0.0
+        group.total_due = 0.00
         db.session.commit()
         
 
@@ -1150,3 +1106,185 @@ def register_routes(app , socketio):
         }
 
         return jsonify(sale_data)
+
+    #12.1 Add Inventory Via text | Single Items at a time
+    @app.route('/inventory/add', methods=['POST'])
+    @login_required
+    def add_inventory():
+        if current_user.role not in ['admin']:
+            return redirect(url_for('inventory_page'))
+
+        # Extract form data
+        name = request.form.get('name').strip()
+        quantity = request.form.get('quantity')
+        unit = request.form.get('unit')
+
+        # Validate quantity
+        try:
+            quantity = float(quantity)
+            if quantity <= 0:
+                flash('Quantity must be greater than zero.', 'error')
+                return redirect(url_for('inventory_page'))
+        except ValueError:
+            flash('Invalid quantity value.', 'error')
+            return redirect(url_for('inventory_page'))
+
+        # Check if the item already exists
+        existing_item = Inventory.query.filter_by(name=name).first()
+        if existing_item:
+            flash(f"Item '{name}' already exists in the inventory. Consider editing the item instead.", 'error')
+        else:
+            # Add new item to inventory
+            new_item = Inventory(name=name, quantity=quantity, unit=unit)
+            db.session.add(new_item)
+            db.session.commit()
+            flash(f"Added new item '{name}' to the inventory.", 'success')
+
+        return redirect(url_for('inventory_page'))
+
+    #12.2 Add the Logs for what have been used by date Multiple at a time
+    @app.route('/inventory/use', methods=['POST'])
+    @login_required
+    def use_inventory():
+        item_ids = request.form.getlist('item_id[]')  # List of item IDs
+        used_quantities = request.form.getlist('used_quantity[]')  # List of quantities
+        usage_dates = request.form.getlist('usage_date[]')  # List of dates
+
+        # Loop through each item
+        for i in range(len(item_ids)):
+            item_id = item_ids[i]
+            used_quantity = float(used_quantities[i])
+            usage_date = usage_dates[i]
+
+            # Parse the date
+            try:
+                usage_date = datetime.strptime(usage_date, '%Y-%m-%d')
+            except ValueError:
+                flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
+                return redirect(url_for('inventory_page'))
+
+            # Fetch the item from the database
+            item = Inventory.query.get(item_id)
+            if item:
+                # Check if enough quantity is available
+                if item.quantity >= used_quantity:
+                    item.subtract_quantity(used_quantity)  # Update the quantity
+                    # Log the usage
+                    log = InventoryLog(item_id=item.id, used_quantity=used_quantity, date=usage_date)
+                    db.session.add(log)
+                    db.session.commit()
+                    flash(f"Used {used_quantity} {item.unit} of {item.name} on {usage_date.strftime('%Y-%m-%d')}.", 'success')
+                else:
+                    flash(f"Cannot subtract {used_quantity}. Only {item.quantity} {item.unit} available for {item.name}.", 'error')
+            else:
+                flash(f"Item with ID {item_id} not found.", 'error')
+
+        return redirect(url_for('inventory_logs'))
+
+    #12.3 Add inventory bulk via excel
+    @app.route('/inventory/upload', methods=['POST'])
+    @login_required
+    def upload_inventory():
+        if current_user.role not in ['admin']:
+            
+            return redirect(url_for('inventory_page'))
+
+        file = request.files.get('file')
+        
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join('uploads', filename)
+            file.save(filepath)
+
+            # Load Excel file
+            try:
+                workbook = openpyxl.load_workbook(filepath)
+                sheet = workbook.active
+                for row in sheet.iter_rows(min_row=2, values_only=True):  # Skip header
+                    name, quantity, unit = row
+                    
+                    # Check if the item already exists in the inventory
+                    existing_item = Inventory.query.filter_by(name=name).first()
+                    
+                    if existing_item:
+                        # If the item exists, update the quantity
+                        existing_item.add_quantity(float(quantity))
+                    else:
+                        # If not, add a new inventory item
+                        new_item = Inventory(name=name, quantity=float(quantity), unit=unit)
+                        db.session.add(new_item)
+                
+                db.session.commit()
+                flash('Inventory updated successfully from Excel file.', 'success')
+            except Exception as e:
+                flash(f"Error processing the file: {str(e)}", 'error')
+
+            # Clean up the file after processing
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                flash('Uploaded file deleted after processing.', 'info')
+
+        return redirect(url_for('inventory_page'))
+
+    @app.route('/inventory')
+    @login_required
+    def inventory_page():
+        inventory_items = Inventory.query.all()
+        return render_template('inventory.html', inventory_items=inventory_items)
+
+    @app.route('/inventory/logs', defaults={'page': 1})
+    @app.route('/inventory/logs/page/<int:page>')
+    @login_required
+    def inventory_logs(page):
+        per_page = 10  # Number of logs to display per page
+        logs = InventoryLog.query.order_by(InventoryLog.date.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        
+        return render_template('inventory_logs.html', logs=logs)
+
+    
+    @app.route('/inventory/log_usage')
+    @login_required
+    def log_usage_page():
+        # Retrieve all inventory items to populate the dropdown in the form
+        inventory_items = Inventory.query.all()
+        return render_template('log_usage.html', inventory_items=inventory_items)
+
+    @app.route('/inventory/delete/<int:item_id>', methods=['POST'])
+    @login_required
+    def delete_inventory(item_id):
+        if current_user.role not in ['admin']:
+            return redirect(url_for('inventory_page'))
+
+        item = Inventory.query.get(item_id)
+        if item:
+            db.session.delete(item)
+            db.session.commit()
+            flash(f"Deleted item '{item.name}' from the inventory.", 'success')
+        else:
+            flash("Item not found.", 'error')
+        return redirect(url_for('inventory_page'))
+    
+    
+    @app.route('/inventory/edit', methods=['POST'])
+    @login_required
+    def edit_inventory():
+        if current_user.role not in ['admin']:
+            return redirect(url_for('inventory_page'))
+
+        item_id = request.form.get('item_id')
+        name = request.form.get('name').strip()
+        quantity = float(request.form.get('quantity'))
+        unit = request.form.get('unit')
+
+        item = Inventory.query.get(item_id)
+        if item:
+            item.name = name
+            item.quantity = quantity
+            item.unit = unit
+            db.session.commit()
+            flash(f"Updated item '{item.name}' in the inventory.", 'success')
+        else:
+            flash("Item not found.", 'error')
+
+        return redirect(url_for('inventory_page'))
+

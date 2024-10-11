@@ -1,6 +1,23 @@
-{% extends "base.html" %} {% block content %}
+{% extends "base.html" %}
+{% block content %}
 <div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
   <h2 class="text-3xl font-bold text-gray-800 mb-6">Group Sales Reports</h2>
+
+  <!-- Predefined Date Range Buttons -->
+  <div class="mb-6">
+    <a href="{{ url_for('group_sales_reports_predefined', range_type='today') }}"
+      class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 mx-2 rounded-lg shadow-md transition duration-300">
+      Today
+    </a>
+    <a href="{{ url_for('group_sales_reports_predefined', range_type='month') }}"
+      class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 mx-2 rounded-lg shadow-md transition duration-300">
+      This Month
+    </a>
+    <a href="{{ url_for('group_sales_reports_predefined', range_type='year') }}"
+      class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 mx-2 rounded-lg shadow-md transition duration-300">
+      This Year
+    </a>
+  </div>
 
   <!-- Group Sales Report Form -->
   <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
@@ -8,10 +25,10 @@
       <!-- Group Selection -->
       <div>
         <label for="group_id" class="block text-lg font-medium text-gray-700 mb-2">Select Group</label>
-        <select name="group_id" id="group_id" required class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+        <select name="group_id" id="group_id" class="w-full px-4 py-3 border border-gray-300 rounded-lg">
           <option value="">Select Group</option>
           {% for group in groups %}
-          <option value="{{ group.id }}" {% if group_id == group.id %} selected {% endif %}>{{ group.name }}</option>
+          <option value="{{ group.id }}" {% if group_id==group.id %} selected {% endif %}>{{ group.name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -19,13 +36,15 @@
       <!-- Start Date -->
       <div>
         <label for="start_date" class="block text-lg font-medium text-gray-700 mb-2">Start Date</label>
-        <input type="date" name="start_date" id="start_date" required class="w-full px-4 py-3 border border-gray-300 rounded-lg" />
+        <input type="date" name="start_date" id="start_date" value="{{ start_date }}"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg" />
       </div>
 
       <!-- End Date -->
       <div>
         <label for="end_date" class="block text-lg font-medium text-gray-700 mb-2">End Date</label>
-        <input type="date" name="end_date" id="end_date" required class="w-full px-4 py-3 border border-gray-300 rounded-lg" />
+        <input type="date" name="end_date" id="end_date" value="{{ end_date }}"
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg" />
       </div>
 
       <!-- Submit Button -->
@@ -48,10 +67,8 @@
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">Items</th>
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">Grand Total</th>
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">Served By</th>
-          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">Payment Method</th>
-
+          <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">Group Name</th>
           <th class="px-6 py-3 text-left text-sm font-medium text-gray-600">Action</th>
-
         </tr>
       </thead>
       <tbody class="text-gray-700">
@@ -67,19 +84,22 @@
           </td>
           <td class="px-6 py-4">{{ sale.grand_total }}</td>
           <td class="px-6 py-4">{{ sale.server }}</td>
-          <td class="px-6 py-4">{{ sale.payment_method }}</td>
-
+          <td class="px-6 py-4">{{ sale.group.name }}</td>
           <td class="px-6 py-4">
-            <button onclick="generateGroupBillPDF('{{ sale.id }}')" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md">
+            <div class="flex gap-2">
+              <button onclick="generateGroupBillPDF('{{ sale.id }}')"
+                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md">
                 <i class="fa-solid fa-download"></i>
-            </button>
-            <form action="{{ url_for('delete_group_sale', group_sale_id=sale.id) }}" method="POST" style="display:inline;">
-                <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md">
-                    <i class="fa-solid fa-trash"></i>
+              </button>
+              <form action="{{ url_for('delete_group_sale', group_sale_id=sale.id) }}" method="POST"
+                style="display:inline;">
+                <button type="submit"
+                  class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md">
+                  <i class="fa-solid fa-trash"></i>
                 </button>
-            </form>
-        </td>
-        
+              </form>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -89,11 +109,11 @@
   <!-- Download Report Button -->
   <div class="mt-6">
     <a href="{{ url_for('download_group_sales_report', start_date=start_date, end_date=end_date, group_id=group_id) }}"
-   class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300">
-   Download Group Sales Report
+      class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300">
+      Download Group Sales Report
     </a>
   </div>
-  {% else %}    
+  {% else %}
   <p class="mt-6 p-6 bg-zinc-800 rounded-lg text-red-500 font-bold">
     No group sales found for the selected date range.
   </p>
@@ -207,7 +227,6 @@
     // Download the PDF
     doc.save(`groupBill_${sale.invoice_number}.pdf`);
   }
-
 </script>
 
 {% endblock %}

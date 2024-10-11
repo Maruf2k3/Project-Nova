@@ -3,14 +3,14 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_jwt_extended import JWTManager
-from flask_socketio import SocketIO
+# from flask_socketio import SocketIO
 
 # Initialize database, login manager, and JWT manager
 db = SQLAlchemy()
 login_manager = LoginManager()
 jwt = JWTManager()
-# Add this to your app initialization
-socketio = SocketIO()
+# # Add this to your app initialization
+# socketio = SocketIO()
 
 def create_initialized_flask_app():
     app = Flask(__name__, static_folder='static')
@@ -22,20 +22,13 @@ def create_initialized_flask_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY'] = 'another-secret-key'
 
-    # Configuration for file uploads
-    app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-
-    # Ensure the upload directory exists
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
 
     # Initialize extensions
     db.init_app(app)
     login_manager.init_app(app)
     jwt.init_app(app)
     # Initialize SocketIO with your app
-    socketio.init_app(app)
+    # socketio.init_app(app)
 
     # Load user
     from models import User
@@ -47,4 +40,4 @@ def create_initialized_flask_app():
     with app.app_context():
         db.create_all()
 
-    return app, socketio
+    return app#, socketio

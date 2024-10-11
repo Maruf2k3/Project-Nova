@@ -1,0 +1,100 @@
+{% extends "base.html" %} {% block content %}
+<div class="container mx-auto p-6 bg-gray-100 rounded-lg shadow-md">
+  <h1 class="text-3xl font-bold text-gray-800 mb-6">Inventory Usage Logs</h1>
+
+  <!-- Table for Daily Usage Logs -->
+  <h2 class="text-2xl font-bold mb-4">Daily Usage Logs</h2>
+
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white border border-gray-300 mt-4">
+      <thead>
+        <tr>
+          <th
+            class="py-3 px-6 bg-gray-100 font-bold uppercase text-sm text-gray-600 border-b border-gray-300"
+          >
+            Date
+          </th>
+          <th
+            class="py-3 px-6 bg-gray-100 font-bold uppercase text-sm text-gray-600 border-b border-gray-300"
+          >
+            Item
+          </th>
+          <th
+            class="py-3 px-6 bg-gray-100 font-bold uppercase text-sm text-gray-600 border-b border-gray-300"
+          >
+            Quantity Used
+          </th>
+          <th
+            class="py-3 px-6 bg-gray-100 font-bold uppercase text-sm text-gray-600 border-b border-gray-300"
+          >
+            Unit
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs.items %}
+        <tr>
+          <td class="py-4 px-6 border-b border-gray-300">
+            {{ log.date.strftime('%Y-%m-%d') }}
+          </td>
+          <td class="py-4 px-6 border-b border-gray-300">
+            {{ log.inventory_item.name }}
+          </td>
+          <td class="py-4 px-6 border-b border-gray-300">
+            {{ log.used_quantity }}
+          </td>
+          <td class="py-4 px-6 border-b border-gray-300">
+            {{ log.inventory_item.unit }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination Controls -->
+  <div class="mt-6 flex justify-between items-center">
+    <div>
+      <!-- Previous Page Link -->
+      {% if logs.has_prev %}
+      <a
+        href="{{ url_for('inventory_logs', page=logs.prev_num) }}"
+        class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700"
+        >Previous</a
+      >
+      {% endif %}
+    </div>
+
+    <div>
+      <!-- Page Number Links -->
+      {% for page_num in logs.iter_pages(left_edge=2, right_edge=2,
+      left_current=2, right_current=2) %} {% if page_num %} {% if page_num ==
+      logs.page %}
+      <span class="bg-blue-500 text-white font-bold py-2 px-4 rounded-lg"
+        >{{ page_num }}</span
+      >
+      {% else %}
+      <a
+        href="{{ url_for('inventory_logs', page=page_num) }}"
+        class="bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-lg hover:bg-gray-400"
+        >{{ page_num }}</a
+      >
+      {% endif %} {% else %}
+      <span class="text-gray-500 font-bold py-2 px-4">...</span>
+      {% endif %} {% endfor %}
+    </div>
+
+    <div>
+      <!-- Next Page Link -->
+      {% if logs.has_next %}
+      <a
+        href="{{ url_for('inventory_logs', page=logs.next_num) }}"
+        class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700"
+        >Next</a
+      >
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -59,10 +59,12 @@ description, url, icon) %}
     Dashboard", "Manage employee details.", "employee_dashboard",
     "fa-briefcase") }} {{ render_card("Employee Attendance", "View and manage
     attendance records.", "attendance_selection", "fa-calendar-check") }} {{
-    render_card("Serve Menu Dashboard", "Manage Customer View Menu.",
-    "serve_menu_admin", "fa-concierge-bell") }} {{ render_card("View Menu",
-    "View Menu For Customer", "serve_menu", "fa-list-alt") }} {% elif
-    current_user.role == "manager" %}
+    render_card("Inventory", "Handle Inventory-related tasks.",
+    "inventory_page", "fa-address-book") }} {{ render_card("Inventory Logs",
+    "Handle Inventory-related tasks.", "inventory_logs", "fa-address-book") }}
+    {{ render_card("Inventory Usage Logs", "Handle Inventory-related tasks.",
+    "log_usage_page", "fa-address-book") }} {% elif current_user.role ==
+    "manager" %}
     <h2 class="text-2xl font-semibold col-span-full mb-4">Manager Panel</h2>
     {{ render_card("Sales Reports", "View and generate sales
     reports.","sales_reports", "fa-chart-line") }} {{ render_card("Groups
@@ -73,12 +75,16 @@ description, url, icon) %}
     render_card("Employee Dashboard", "Manage employee details.",
     "employee_dashboard", "fa-briefcase") }} {{ render_card("Employee
     Attendance", "View and manage attendance records.", "attendance_selection",
-    "fa-calendar-check") }} {% elif current_user.role == "cashier" %}
+    "fa-calendar-check") }} {{ render_card("Inventory", "Handle
+    Inventory-related tasks.", "inventory_page", "fa-address-book") }} {{
+    render_card("Inventory Logs", "Handle Inventory-related tasks.",
+    "inventory_logs", "fa-address-book") }} {{ render_card("Inventory Usage
+    Logs", "Handle Inventory-related tasks.", "log_usage_page",
+    "fa-address-book") }} {% elif current_user.role == "cashier" %}
     <h2 class="text-2xl font-semibold col-span-full mb-4">Cashier Panel</h2>
     {{ render_card("Create Bill", "Generate customer bills.", "create_bill",
     "fa-receipt") }} {{ render_card("Employee Dashboard", "Manage employee
-    details.", "e", "fa-briefcase") }} {{ render_card("View Menu", "View Menu
-    For Customer", "serve_menu", "fa-list-alt") }} {% endif %}
+    details.", "e", "fa-briefcase") }} {% endif %}
   </div>
 </div>
 {% endblock %}
