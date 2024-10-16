@@ -1,0 +1,368 @@
+{% extends "base.html" %} {% block content %}
+<div class="max-w-4xl mx-auto bg-white shadow-md p-8 mt-10 rounded-xl">
+  <!-- Header -->
+  <div class="flex justify-between items-center border-b pb-6">
+    <!-- Logo Upload -->
+    <div class="flex items-center space-x-4">
+      <img
+        id="companyLogo"
+        class="w-24 h-24 object-cover rounded-lg shadow-md border"
+        alt="Your Company Logo"
+      />
+      <input
+        type="file"
+        id="logoUpload"
+        class="hidden"
+        accept="image/*"
+        onchange="loadLogo(event)"
+      />
+      <button
+        onclick="document.getElementById('logoUpload').click()"
+        class="text-green-600 font-semibold text-sm hover:text-green-800"
+      >
+        Upload Logo
+      </button>
+    </div>
+
+    <!-- Company Information -->
+    <div class="text-right">
+      <p
+        id="companyName"
+        class="text-2xl font-bold border-none focus:ring-0 text-gray-900 w-full"
+      >
+        Podda Resturant LLC
+      </p>
+      <p
+        id="companyAddress"
+        class="text-sm mt-1 text-gray-500 border-none focus:ring-0 w-full"
+      >
+        Nuamia 2 Shop 17 Ajman UAE
+      </p>
+    </div>
+  </div>
+
+  <!-- Invoice Info -->
+  <div class="mt-6 flex justify-between">
+    <div>
+      <p>
+        Invoice Number:
+        <input
+          type="text"
+          id="invoiceNumber"
+          class="font-semibold border-b-2 border-gray-300 focus:ring-0 text-gray-900"
+          value="123456"
+        />
+      </p>
+      <p>
+        Invoice Date:
+        <input
+          type="date"
+          id="invoiceDate"
+          class="font-semibold border-b-2 border-gray-300 focus:ring-0 text-gray-900"
+        />
+      </p>
+    </div>
+  </div>
+
+  <!-- Client Info -->
+  <div class="mt-6">
+    <p class="text-lg font-semibold text-gray-700">Invoice To:</p>
+    <input
+      type="text"
+      id="clientName"
+      class="font-semibold border border-gray-300 rounded-lg p-2 w-full mt-2 focus:ring focus:ring-green-200"
+      placeholder="Client Name"
+    />
+    <input
+      type="text"
+      id="clientPhone"
+      class="border border-gray-300 rounded-lg p-2 w-full mt-2 focus:ring focus:ring-green-200"
+      placeholder="Phone Number"
+    />
+  </div>
+
+  <!-- Table of Items -->
+  <table class="min-w-full bg-white mt-6 border border-gray-200 rounded-lg">
+    <thead>
+      <tr class="bg-green-500 text-white">
+        <th class="py-2">No.</th>
+        <th class="py-2">Product Description</th>
+        <th class="py-2">Price (AED)</th>
+        <th class="py-2">Quantity</th>
+        <th class="py-2">Total (AED)</th>
+        <th class="py-2">Action</th>
+      </tr>
+    </thead>
+    <tbody id="invoice-items">
+      <!-- Dynamic rows will go here -->
+    </tbody>
+  </table>
+
+  <!-- Add new Item -->
+  <div class="mt-4 flex space-x-4">
+    <input
+      type="text"
+      id="itemName"
+      class="border border-gray-300 rounded-lg p-2 w-full focus:ring focus:ring-green-200"
+      placeholder="Item Name"
+    />
+    <input
+      type="number"
+      id="itemQty"
+      class="border border-gray-300 rounded-lg p-2 w-32 focus:ring focus:ring-green-200"
+      placeholder="Quantity"
+    />
+    <input
+      type="number"
+      id="itemUnitPrice"
+      class="border border-gray-300 rounded-lg p-2 w-32 focus:ring focus:ring-green-200"
+      placeholder="Unit Price (AED)"
+    />
+    <button
+      onclick="addItem()"
+      class="bg-green-600 text-white px-6 py-2 rounded-md shadow-md hover:bg-green-700"
+    >
+      Add Item
+    </button>
+  </div>
+
+  <!-- Totals -->
+  <div class="flex justify-end mt-6">
+    <div class="text-right w-full md:w-1/2 lg:w-1/3">
+      <div class="flex justify-between mb-2">
+        <span>Subtotal (AED):</span>
+        <span id="subtotal" class="font-semibold">AED 0.00</span>
+      </div>
+      <div class="flex justify-between mb-2">
+        <span>Tax (%):</span>
+        <input
+          type="number"
+          id="taxRate"
+          class="w-20 text-right border border-gray-300 rounded-lg p-2 focus:ring focus:ring-green-200"
+          value="10"
+          onchange="calculateTotal()"
+        />%
+      </div>
+      <div class="flex justify-between mb-2">
+        <span>Tax Amount (AED):</span>
+        <span id="taxAmount" class="font-semibold">AED 0.00</span>
+      </div>
+      <div class="flex justify-between mb-2">
+        <span>Discount (AED):</span>
+        <input
+          type="number"
+          id="discount"
+          class="w-20 text-right border border-gray-300 rounded-lg p-2 focus:ring focus:ring-green-200"
+          value="0"
+          onchange="calculateTotal()"
+        />
+      </div>
+      <div class="flex justify-between text-green-600 text-xl font-bold">
+        <span>Total (AED):</span>
+        <span id="grandTotal">AED 0.00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terms & Signature -->
+  <div class="mt-6 border-t pt-4">
+    <p class="font-semibold">Terms & Conditions:</p>
+    <textarea
+      id="terms"
+      class="w-full border border-gray-300 rounded-lg p-2 mt-2 focus:ring focus:ring-green-200"
+      placeholder="Enter terms and conditions..."
+    ></textarea>
+  </div>
+
+  <!-- Button to generate PDF -->
+  <div class="flex justify-center mt-8">
+    <button
+      onclick="generatePDF()"
+      class="bg-green-600 text-white py-2 px-6 rounded-md shadow-md hover:bg-green-700"
+    >
+      Download Invoice as PDF
+    </button>
+  </div>
+</div>
+
+<script>
+  let invoiceItems = [];
+
+  function loadLogo(event) {
+    const logoFile = event.target.files[0];
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      document.getElementById("companyLogo").src = e.target.result;
+    };
+    reader.readAsDataURL(logoFile);
+  }
+
+  function addItem() {
+    const itemName = document.getElementById("itemName").value;
+    const itemQty = parseFloat(document.getElementById("itemQty").value);
+    const itemUnitPrice = parseFloat(
+      document.getElementById("itemUnitPrice").value
+    );
+    const itemTotal = (itemQty * itemUnitPrice).toFixed(2);
+
+    if (itemName && itemQty && itemUnitPrice) {
+      invoiceItems.push({ itemName, itemQty, itemUnitPrice, itemTotal });
+      document.getElementById("itemName").value = "";
+      document.getElementById("itemQty").value = "";
+      document.getElementById("itemUnitPrice").value = "";
+      renderInvoiceItems();
+      calculateTotal();
+    }
+  }
+
+  function renderInvoiceItems() {
+    const invoiceTable = document.getElementById("invoice-items");
+    invoiceTable.innerHTML = "";
+    invoiceItems.forEach((item, index) => {
+      const row = `
+        <tr class="border-b">
+          <td class="py-2 text-center ">${index + 1}</td>
+          <td class="py-2">${item.itemName}</td>
+          <td class="py-2 text-center">AED ${item.itemUnitPrice.toFixed(2)}</td>
+          <td class="py-2 text-center">${item.itemQty}</td>
+          <td class="py-2 text-center">AED ${item.itemTotal}</td>
+          <td class="py-2 text-center"><button onclick="removeItem(${index})" class="text-red-500"><i class="fa-solid fa-x"></i></button></td>
+        </tr>
+      `;
+      invoiceTable.innerHTML += row;
+    });
+  }
+
+  function removeItem(index) {
+    invoiceItems.splice(index, 1);
+    renderInvoiceItems();
+    calculateTotal();
+  }
+
+  function calculateTotal() {
+    const subtotal = invoiceItems
+      .reduce((total, item) => total + parseFloat(item.itemTotal), 0)
+      .toFixed(2);
+    const taxRate = parseFloat(document.getElementById("taxRate").value) || 0;
+    const discount = parseFloat(document.getElementById("discount").value) || 0;
+    const taxAmount = ((subtotal * taxRate) / 100).toFixed(2);
+    const grandTotal = (subtotal - discount + parseFloat(taxAmount)).toFixed(2);
+
+    document.getElementById("subtotal").textContent = `AED ${subtotal}`;
+    document.getElementById("taxAmount").textContent = `AED ${taxAmount}`;
+    document.getElementById("grandTotal").textContent = `AED ${grandTotal}`;
+  }
+
+  function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    // Apply font, color, and layout
+    doc.setTextColor(0, 102, 0); // Green color for headers
+    doc.setFontSize(14);
+
+    // Company Logo
+    const companyLogo = document.getElementById("companyLogo");
+    if (companyLogo.src) {
+      doc.addImage(companyLogo.src, "JPEG", 15, 10, 30, 30);
+    }
+
+    // Company Info
+    const companyName = "Podda Resturant LLC";
+    const companyAddress = "Nuamia 2 SHop 17 Ajman UAE";
+    doc.text(companyName, 50, 20);
+    doc.setFontSize(10);
+    doc.text(companyAddress, 50, 25);
+
+    // Invoice Info
+    const invoiceNumber = document.getElementById("invoiceNumber").value;
+    const invoiceDate = document.getElementById("invoiceDate").value;
+    doc.setTextColor(0, 0, 0); // Black color for text
+    doc.text(`Invoice Number: ${invoiceNumber}`, 150, 20);
+    doc.text(`Invoice Date: ${invoiceDate}`, 150, 25);
+
+    // Client Info
+    const clientName = document.getElementById("clientName").value || "";
+    const clientPhone = document.getElementById("clientPhone").value || "";
+    doc.setTextColor(0, 102, 0); // Green color for section headers
+    doc.setFontSize(12);
+    doc.text("Invoice To:", 15, 50);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(clientName, 15, 55);
+    doc.text(`Phone: ${clientPhone}`, 15, 60);
+
+    // Table Headers
+    let yPos = 70;
+    doc.setTextColor(0, 102, 0); // Green color for headers
+    doc.setFontSize(10);
+    doc.text("No.", 15, yPos);
+    doc.text("Description", 35, yPos);
+    doc.text("Price (AED)", 105, yPos);
+    doc.text("Qty", 135, yPos);
+    doc.text("Total (AED)", 160, yPos);
+
+    // Draw Table Borders
+    doc.setDrawColor(0, 102, 0);
+    doc.setLineWidth(0.5);
+    doc.line(15, yPos + 2, 190, yPos + 2); // Top Line
+
+    // Table Rows
+    yPos += 8;
+    doc.setTextColor(0, 0, 0); // Black for content
+    invoiceItems.forEach((item, index) => {
+      doc.text(`${index + 1}`, 15, yPos);
+      doc.text(item.itemName, 35, yPos);
+      doc.text(`AED ${item.itemUnitPrice.toFixed(2)}`, 105, yPos);
+      doc.text(`${item.itemQty}`, 135, yPos);
+      doc.text(`AED ${item.itemTotal}`, 160, yPos);
+      yPos += 8;
+      doc.line(15, yPos - 4, 190, yPos - 4); // Draw line between rows
+    });
+
+    // Draw Bottom Line for Table
+    doc.line(15, yPos - 4, 190, yPos - 4); // Bottom Line
+
+    // Totals
+    yPos += 10;
+    doc.setTextColor(0, 102, 0); // Green for totals
+    doc.text(
+      `Subtotal: ${document.getElementById("subtotal").textContent}`,
+      120,
+      yPos
+    );
+    yPos += 5;
+    doc.text(
+      `Tax: ${document.getElementById("taxAmount").textContent}`,
+      120,
+      yPos
+    );
+    yPos += 5;
+    doc.text(
+      `Discount: ${document.getElementById("discount").value}`,
+      120,
+      yPos
+    );
+    yPos += 5;
+    doc.setFontSize(12);
+    doc.text(
+      `Total: ${document.getElementById("grandTotal").textContent}`,
+      120,
+      yPos
+    );
+
+    // Terms and Conditions
+    yPos += 10;
+    const terms = document.getElementById("terms").value || "";
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text("Terms & Conditions:", 15, yPos);
+    yPos += 5;
+    doc.setFontSize(9);
+    doc.text(doc.splitTextToSize(terms, 180), 15, yPos);
+
+    // Save PDF
+    doc.save("invoice.pdf");
+  }
+</script>
+{% endblock %}

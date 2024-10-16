@@ -83,31 +83,8 @@
       {% endblock %}
     </div>
 
-    <!-- SocketIO functionality (kept the same) -->
-    <!-- <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script> -->
     <!-- SweetAlert2 JS -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-    <!-- <script>
-      var socket = io();
-
-      // Listen for new bill events
-      socket.on("new_bill_created", function (data) {
-        console.log("New bill created: " + data.invoice_number);
-        // Update the UI to reflect the new bill (add logic here)
-      });
-
-      // Listen for employee clock-in/out events
-      socket.on("employee_clocked_in", function (data) {
-        console.log(data.employee_name + " clocked in");
-        // Update the UI to reflect the employee clock-in (add logic here)
-      });
-
-      socket.on("employee_clocked_out", function (data) {
-        console.log("Employee clocked out: " + data.employee_id);
-        // Update the UI to reflect the employee clock-out (add logic here)
-      });
-    </script> -->
   </body>
 </html>

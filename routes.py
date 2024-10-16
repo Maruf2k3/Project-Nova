@@ -11,7 +11,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
 import openpyxl  # To handle Excel files
-# from flask_socketio import emit
+
 
 ALLOWED_EXTENSIONS = {'xls', 'xlsx'}
 
@@ -20,14 +20,7 @@ def allowed_file(filename):
 
 def register_routes(app):
 
-    # @socketio.on('connect')
-    # def handle_connect():
-    #     print('Client connected')
-
-    # @socketio.on('disconnect')
-    # def handle_disconnect():
-    #     print('Client disconnected')
-
+    
     # 1. Error routes Handeled 
     @app.errorhandler(Exception)
     def handle_error(error):# Generic error handler for all error types
@@ -383,8 +376,7 @@ def register_routes(app):
             # Commit the transaction and emit event for all connected clients
             db.session.commit()
 
-            # # Emit event with the invoice number
-            # socketio.emit('new_bill_created', {'invoice_number': invoice_number}, to='/')
+            
 
             flash('Bill created successfully!', 'success')
             return redirect(url_for('dashboard'))
@@ -754,8 +746,7 @@ def register_routes(app):
         db.session.add(attendance)
         db.session.commit()
 
-        # # Emit the event to all clients
-        # socketio.emit('employee_clocked_in', {'employee_id': employee.id, 'employee_name': employee.name}, to='/')
+       
 
 
         flash(f'{employee.name} clocked in successfully!', 'success')
@@ -770,8 +761,7 @@ def register_routes(app):
             clock_out_time = datetime.now(pytz.timezone("Asia/Dubai"))
             attendance.clock_out = clock_out_time
             db.session.commit()
-            # # Emit the event to all clients
-            # socketio.emit('employee_clocked_out', {'employee_id': employee_id}, to='/')
+            
 
         else:
             flash('No clock-in record found for the employee.', 'error')
@@ -1288,3 +1278,48 @@ def register_routes(app):
 
         return redirect(url_for('inventory_page'))
 
+
+
+    # Route to download the current inventory as CSV
+    @app.route('/download-inventory', methods=['GET'])
+    @login_required
+    def download_inventory():
+        if current_user.role not in ['admin']:
+            flash(f'Your Current Role is: {current_user.role}. You do not have permission to download the inventory.', 'error')
+            return redirect(url_for('inventory_page'))
+
+        # Fetch all inventory items from the database
+        inventory_items = Inventory.query.all()
+
+        if not inventory_items:
+            flash('No inventory items found.', 'error')
+            return redirect(url_for('inventory_page'))
+
+        # Generate the CSV data in memory
+        output = io.StringIO()
+        csv_writer = csv.writer(output)
+
+        # Write CSV header
+        csv_writer.writerow(['Item Name', 'Quantity', 'Unit'])
+
+        # Write inventory data rows
+        for item in inventory_items:
+            csv_writer.writerow([item.name, item.quantity, item.unit])
+
+        # Move to the beginning of the StringIO object
+        output.seek(0)
+
+        # Create a Response object with the CSV data
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': 'attachment; filename=inventory.csv'
+            }
+        )
+    # Route to download the current inventory as CSV
+    @app.route('/invoice-maker', methods=['GET'])
+    @login_required
+    def invoice_maker():
+        return render_template('invoicemaker.html')
+    

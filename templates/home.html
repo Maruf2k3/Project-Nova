@@ -53,18 +53,19 @@ description, url, icon) %}
     Reports", "View and generate sales reports.", "sales_reports",
     "fa-chart-line") }} {{ render_card("Groups Reports", "View and generate
     Groups reports.", "group_sales_reports", "fa-chart-line") }} {{
-    render_card("Menu Management", "Update and manage menu items.",
-    "menu_management", "fa-utensils") }} {{ render_card("Create Bill", "Generate
-    customer bills.", "create_bill", "fa-receipt") }} {{ render_card("Employee
-    Dashboard", "Manage employee details.", "employee_dashboard",
-    "fa-briefcase") }} {{ render_card("Employee Attendance", "View and manage
-    attendance records.", "attendance_selection", "fa-calendar-check") }} {{
-    render_card("Inventory", "Handle Inventory-related tasks.",
-    "inventory_page", "fa-address-book") }} {{ render_card("Inventory Logs",
-    "Handle Inventory-related tasks.", "inventory_logs", "fa-address-book") }}
-    {{ render_card("Inventory Usage Logs", "Handle Inventory-related tasks.",
-    "log_usage_page", "fa-address-book") }} {% elif current_user.role ==
-    "manager" %}
+    render_card("Invoice Maker", "Generate Invoices", "invoice_maker",
+    "fa-file-invoice") }} {{ render_card("Menu Management", "Update and manage
+    menu items.", "menu_management", "fa-utensils") }} {{ render_card("Create
+    Bill", "Generate customer bills.", "create_bill", "fa-receipt") }} {{
+    render_card("Employee Dashboard", "Manage employee details.",
+    "employee_dashboard", "fa-briefcase") }} {{ render_card("Employee
+    Attendance", "View and manage attendance records.", "attendance_selection",
+    "fa-calendar-check") }} {{ render_card("Inventory", "Handle
+    Inventory-related tasks.", "inventory_page", "fa-address-book") }} {{
+    render_card("Inventory Logs", "Handle Inventory-related tasks.",
+    "inventory_logs", "fa-address-book") }} {{ render_card("Inventory Usage
+    Logs", "Handle Inventory-related tasks.", "log_usage_page",
+    "fa-address-book") }} {% elif current_user.role == "manager" %}
     <h2 class="text-2xl font-semibold col-span-full mb-4">Manager Panel</h2>
     {{ render_card("Sales Reports", "View and generate sales
     reports.","sales_reports", "fa-chart-line") }} {{ render_card("Groups
@@ -72,8 +73,9 @@ description, url, icon) %}
     "fa-chart-line") }} {{ render_card("Create Bill", "Generate customer
     bills.", "create_bill", "fa-receipt") }} {{ render_card("Group Management",
     "Manage groups and settle payments.", "group_management", "fa-users") }} {{
-    render_card("Employee Dashboard", "Manage employee details.",
-    "employee_dashboard", "fa-briefcase") }} {{ render_card("Employee
+    render_card("Invoice Maker", "Generate Invoices", "invoice_maker",
+    "fa-file-invoice") }} {{ render_card("Employee Dashboard", "Manage employee
+    details.", "employee_dashboard", "fa-briefcase") }} {{ render_card("Employee
     Attendance", "View and manage attendance records.", "attendance_selection",
     "fa-calendar-check") }} {{ render_card("Inventory", "Handle
     Inventory-related tasks.", "inventory_page", "fa-address-book") }} {{

@@ -78,6 +78,8 @@
             <option value="liters">liters</option>
             <option value="cans">cans</option>
             <option value="mutha">mutha</option>
+            <option value="Packed">Packed</option>
+            <option value="pices">pices</option>
           </select>
         </div>
         <button
@@ -99,6 +101,15 @@
       class="w-full px-4 py-3 border rounded-lg"
       onkeyup="searchInventory()"
     />
+  </div>
+  <!-- Button to Download the Current Inventory -->
+  <div class="flex justify-center mt-6">
+    <a
+      href="{{ url_for('download_inventory') }}"
+      class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg"
+    >
+      Download Inventory
+    </a>
   </div>
 
   <!-- Inventory Table Display -->
@@ -215,6 +226,9 @@
           <option value="kg">kg</option>
           <option value="liters">liters</option>
           <option value="cans">cans</option>
+          <option value="mutha">mutha</option>
+          <option value="Packed">Packed</option>
+          <option value="pices">pices</option>
         </select>
       </div>
       <div class="flex justify-end space-x-4">

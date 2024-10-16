@@ -3,14 +3,13 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_jwt_extended import JWTManager
-# from flask_socketio import SocketIO
+
 
 # Initialize database, login manager, and JWT manager
 db = SQLAlchemy()
 login_manager = LoginManager()
 jwt = JWTManager()
-# # Add this to your app initialization
-# socketio = SocketIO()
+
 
 def create_initialized_flask_app():
     app = Flask(__name__, static_folder='static')
@@ -27,8 +26,7 @@ def create_initialized_flask_app():
     db.init_app(app)
     login_manager.init_app(app)
     jwt.init_app(app)
-    # Initialize SocketIO with your app
-    # socketio.init_app(app)
+
 
     # Load user
     from models import User
@@ -40,4 +38,4 @@ def create_initialized_flask_app():
     with app.app_context():
         db.create_all()
 
-    return app#, socketio
+    return app
